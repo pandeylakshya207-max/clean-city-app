@@ -19,9 +19,9 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).parent
 KEY_FILE = BASE_DIR / "secret.key"
-if not KEY_FILE.exists():
+if not KEY_FILE.exists() and not os.getenv("SECRET_KEY"):
     KEY_FILE.write_text(secrets.token_hex(32))
-SECRET_KEY = KEY_FILE.read_text().strip()
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip() or KEY_FILE.read_text().strip()
 
 OTP_VALID_MINUTES = 5
 OTP_MAX_ATTEMPTS = 5
@@ -179,3 +179,4 @@ def require_staff(user=Depends(get_current_user)):
     if user["role"] != "staff":
         raise HTTPException(403, "Only municipal staff can do this.")
     return user
+

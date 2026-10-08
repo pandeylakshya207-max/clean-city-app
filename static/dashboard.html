@@ -73,6 +73,7 @@
   <div id="list"><div class="empty">Loading...</div></div>
 </main>
 
+<script src="/static/shrink.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const token = localStorage.getItem("cc_token");
@@ -208,9 +209,10 @@ function renderActions(c) {
     if (!file.files.length) {
       throw new Error("First choose or take the photo of the cleaned spot.");
     }
+    const small = await shrinkPhoto(file.files[0]);
     const send = (confirmed) => {
       const form = new FormData();
-      form.append("photo", file.files[0]);
+      form.append("photo", small, "after.jpg");
       form.append("confirm", confirmed ? "true" : "false");
       return api(base + "/clean", { method: "POST", body: form });
     };
@@ -333,3 +335,4 @@ $("logout-btn").addEventListener("click", logout);
 </script>
 </body>
 </html>
+

@@ -1,90 +1,119 @@
-﻿import threading
+﻿"""Photo checks. The AI models run on ONNX Runtime, which is light enough for small servers."""
+import json
+import threading
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageStat
 
-MODEL_NAME = "openai/clip-vit-base-patch32"
-AI_MODEL_NAME = "Ateeqq/ai-vs-human-image-detector"
+MODELS = Path(__file__).parent / "models"
+MODEL_FILES = ("clip_vision.onnx", "detector.onnx", "clip_text.json", "detector.json")
 
-GARBAGE_LABELS = [
-    "a photo of garbage dumped on a street",
-    "a photo of a pile of trash and litter on the roadside",
-    "a photo of an overflowing garbage bin",
-    "a photo of plastic waste and rubbish lying on the ground",
-]
-OTHER_LABELS = [
-    "a selfie or a photo of a person",
-    "a photo of a clean street or road",
-    "a photo of the inside of a room",
-    "a screenshot of a phone or computer screen",
-    "a photo of a screen showing a picture",
-    "a photo of food on a plate",
-    "a photo of a document or printed text",
-    "a photo of an animal",
-    "a photo of a vehicle",
-    "a photo of buildings, sky or scenery",
-    "a cartoon, drawing or computer generated image",
-]
 GARBAGE_THRESHOLD = 0.55
-AI_THRESHOLD = 0.99
+AI_THRESHOLD = 2.0  # never reached: the detector only flags photos for staff, it does not reject
 DUPLICATE_DISTANCE = 5
 SAME_SPOT_SIMILARITY = 0.90
 
-_model = None
-_processor = None
-_ai_model = None
-_ai_processor = None
-_ai_index = None
+CLIP_MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype="float32")
+CLIP_STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype="float32")
+
+_clip = None
+_text = None
+_detector = None
+_detector_meta = None
 _lock = threading.Lock()
 
 
-def _load():
-    global _model, _processor
-    with _lock:
-        if _model is None:
-            from transformers import CLIPModel, CLIPProcessor
+def models_status():
+    """Size of each model file in MB, or None if it is missing."""
+    status = {}
+    for name in MODEL_FILES:
+        path = MODELS / name
+        status[name] = round(path.stat().st_size / 1e6, 1) if path.exists() else None
+    return status
 
-            _processor = CLIPProcessor.from_pretrained(MODEL_NAME)
-            _model = CLIPModel.from_pretrained(MODEL_NAME)
-            _model.eval()
-    return _model, _processor
+
+def _session(name):
+    import onnxruntime as ort
+
+    path = MODELS / name
+    if not path.exists():
+        raise RuntimeError(f"Model file {name} is missing from the models folder.")
+    return ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+
+
+def _load():
+    global _clip, _text
+    with _lock:
+        if _clip is None:
+            raw = json.loads((MODELS / "clip_text.json").read_text())
+            _text = {
+                "labels": raw["labels"],
+                "emb": np.array(raw["embeddings"], dtype="float32"),
+                "scale": float(raw["logit_scale"]),
+                "n": int(raw["garbage_count"]),
+            }
+            _clip = _session("clip_vision.onnx")
+    return _clip, _text
 
 
 def _load_ai():
-    global _ai_model, _ai_processor, _ai_index
+    global _detector, _detector_meta
     with _lock:
-        if _ai_model is None:
-            from transformers import AutoImageProcessor, AutoModelForImageClassification
+        if _detector is None:
+            _detector_meta = json.loads((MODELS / "detector.json").read_text())
+            _detector = _session("detector.onnx")
+    return _detector, _detector_meta
 
-            processor = AutoImageProcessor.from_pretrained(AI_MODEL_NAME)
-            model = AutoModelForImageClassification.from_pretrained(AI_MODEL_NAME)
-            model.eval()
-            labels = {int(i): str(name).lower() for i, name in model.config.id2label.items()}
-            ai_words = ("ai", "fake", "artificial", "generated", "synthetic")
-            ai_ids = [i for i, name in labels.items() if name.startswith(ai_words)]
-            if len(ai_ids) != 1:
-                raise RuntimeError(f"Could not find the AI label in {labels}")
-            _ai_index = ai_ids[0]
-            _ai_processor = processor
-            _ai_model = model
-    return _ai_model, _ai_processor, _ai_index
+
+def _clip_pixels(img):
+    w, h = img.size
+    if w <= h:
+        new_w, new_h = 224, max(224, int(224 * h / w))
+    else:
+        new_w, new_h = max(224, int(224 * w / h)), 224
+    img = img.resize((new_w, new_h), Image.Resampling.BICUBIC)
+    left = (new_w - 224) // 2
+    top = (new_h - 224) // 2
+    img = img.crop((left, top, left + 224, top + 224))
+    arr = np.asarray(img, dtype="float32") / 255.0
+    arr = (arr - CLIP_MEAN) / CLIP_STD
+    return np.ascontiguousarray(arr.transpose(2, 0, 1)[None])
+
+
+def _detector_pixels(img, meta):
+    size = meta["size"]
+    img = img.resize((size["width"], size["height"]), Image.Resampling(meta["resample"]))
+    arr = np.asarray(img, dtype="float32") / 255.0
+    arr = (arr - np.array(meta["mean"], dtype="float32")) / np.array(meta["std"], dtype="float32")
+    return np.ascontiguousarray(arr.transpose(2, 0, 1)[None])
+
+
+def _softmax(logits):
+    logits = logits - logits.max()
+    probs = np.exp(logits)
+    return probs / probs.sum()
 
 
 def analyze(img):
     """One pass of the CLIP model: garbage score, closest description, and a vector describing the scene."""
-    import torch
-
-    model, processor = _load()
-    labels = GARBAGE_LABELS + OTHER_LABELS
-    inputs = processor(text=labels, images=img, return_tensors="pt", padding=True)
-    with torch.no_grad():
-        out = model(**inputs)
-    probs = out.logits_per_image.softmax(dim=1)[0]
-    score = float(probs[: len(GARBAGE_LABELS)].sum())
-    best = labels[int(probs.argmax())]
-    vec = out.image_embeds[0].float().numpy().astype("float32")
+    sess, text = _load()
+    names = [o.name for o in sess.get_outputs()]
+    outputs = sess.run(None, {sess.get_inputs()[0].name: _clip_pixels(img)})
+    vec = outputs[names.index("image_embeds")] if "image_embeds" in names else outputs[0]
+    vec = np.asarray(vec, dtype="float32").reshape(-1)
     vec = vec / (np.linalg.norm(vec) + 1e-12)
+    probs = _softmax(text["scale"] * (text["emb"] @ vec))
+    score = float(probs[: text["n"]].sum())
+    best = text["labels"][int(probs.argmax())]
     return score, best, vec
+
+
+def ai_generated_score(img):
+    """How sure the model is that the image was made by an AI generator (0 to 1)."""
+    sess, meta = _load_ai()
+    logits = sess.run(None, {sess.get_inputs()[0].name: _detector_pixels(img, meta)})[0][0]
+    return float(_softmax(np.asarray(logits, dtype="float32"))[meta["ai_index"]])
 
 
 def similarity(a, b):
@@ -96,18 +125,7 @@ def to_bytes(vec):
 
 
 def from_bytes(data):
-    return np.frombuffer(data, dtype="float32")
-
-
-def ai_generated_score(img):
-    """How sure the model is that the image was made by an AI generator (0 to 1)."""
-    import torch
-
-    model, processor, index = _load_ai()
-    inputs = processor(images=img, return_tensors="pt")
-    with torch.no_grad():
-        probs = model(**inputs).logits.softmax(dim=1)[0]
-    return float(probs[index])
+    return np.frombuffer(bytes(data), dtype="float32")
 
 
 def quality_problem(img):
@@ -179,35 +197,32 @@ def check_photo(img, existing_hashes, nearby=()):
                 digest,
             )
 
-    return {"ok": True, "reason": None, "score": score, "hash": digest, "embedding": to_bytes(vec), "fake_score": ai_score}
+    return {
+        "ok": True,
+        "reason": None,
+        "score": score,
+        "hash": digest,
+        "embedding": to_bytes(vec),
+        "fake_score": ai_score,
+    }
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    import sys
 
     from database import get_db
 
-    print("Loading the AI models (a first run downloads about 370 MB)...")
-    _load()
-    _load_ai()
-    print("Models ready.")
+    print("Model files (MB):", models_status())
+    print("PyTorch loaded:", "torch" in sys.modules)
     conn = get_db()
     rows = conn.execute("SELECT id, photo_path FROM complaints ORDER BY id").fetchall()
     conn.close()
-    uploads = Path(__file__).parent / "uploads"
-    vectors = []
     for row in rows:
-        path = uploads / row["photo_path"]
+        path = Path(__file__).parent / "uploads" / row["photo_path"]
         if not path.exists():
             continue
         photo = Image.open(path).convert("RGB")
-        score, best, vec = analyze(photo)
+        score, best, _ = analyze(photo)
         ai_score = ai_generated_score(photo)
-        vectors.append((row["id"], vec))
         print(f"Report #{row['id']}: garbage {score:.2f} | AI-generated {ai_score:.2f} | {best}")
-    print("How similar the photos are to each other (1.00 = identical):")
-    for i in range(len(vectors)):
-        for j in range(i + 1, len(vectors)):
-            a, b = vectors[i], vectors[j]
-            print(f"  Report #{a[0]} vs #{b[0]}: {similarity(a[1], b[1]):.2f}")
 

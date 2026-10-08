@@ -2,12 +2,13 @@
 import smtplib
 from email.message import EmailMessage
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import auth
 import checks
-from complaints import UPLOAD_DIR, load_photo, save_photo
+import storage
+from complaints import load_photo
 from database import get_db
 
 FAKE_FLAG_SCORE = 0.50
@@ -25,12 +26,11 @@ class RejectBody(BaseModel):
 
 
 def staff_dict(row):
-    after = row["after_photo_path"]
     fake = row["fake_score"]
     return {
         "id": row["id"],
-        "photo_url": "/uploads/" + row["photo_path"],
-        "after_photo_url": ("/uploads/" + after) if after else None,
+        "photo_url": storage.photo_url(row["photo_path"]),
+        "after_photo_url": storage.photo_url(row["after_photo_path"]),
         "latitude": row["latitude"],
         "longitude": row["longitude"],
         "address": row["address"],
@@ -70,42 +70,43 @@ def send_email(to, subject, text, attachment=None):
     msg["To"] = to
     msg.set_content(text)
     if attachment is not None:
-        msg.add_attachment(
-            attachment.read_bytes(), maintype="image", subtype="jpeg", filename="after-cleaning.jpg"
-        )
+        msg.add_attachment(attachment, maintype="image", subtype="jpeg", filename="after-cleaning.jpg")
     host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     with smtplib.SMTP_SSL(host, 465, timeout=20) as server:
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
 
 
-def notify(info, event, attachment=None):
-    """Tell the person who complained what happened to their report."""
-    place = info["address"] or f"{info['latitude']:.5f}, {info['longitude']:.5f}"
-    number = info["id"]
-    if event == "cleaned":
-        subject = f"Clean City: your report #{number} has been cleaned"
-        text = (
-            f"Good news. The garbage you reported at {place} has been cleaned.\n\n"
-            "The photo taken after cleaning is attached. You can also see it in the app under My reports.\n\n"
-            "Thank you for helping keep the city clean."
-        )
-    elif event == "assigned":
-        subject = f"Clean City: a team is on the way for report #{number}"
-        text = (
-            f"Your report #{number} at {place} has been assigned to: {info['assigned_to']}.\n\n"
-            "You will get another message with a photo once the spot is cleaned."
-        )
-    else:
-        subject = f"Clean City: your report #{number} was not accepted"
-        text = (
-            f"The municipal team reviewed your report #{number} at {place} and did not accept it.\n\n"
-            f"Reason: {info['staff_note']}"
-        )
-    if info["contact_type"] != "email":
-        print(f"\n[DEV MODE] SMS to {info['contact']}: {subject}\n", flush=True)
-        return
+def notify(info, event):
+    """Tell the person who complained what happened to their report. Never raises."""
     try:
+        place = info["address"] or f"{info['latitude']:.5f}, {info['longitude']:.5f}"
+        number = info["id"]
+        attachment = None
+        if event == "cleaned":
+            subject = f"Clean City: your report #{number} has been cleaned"
+            text = (
+                f"Good news. The garbage you reported at {place} has been cleaned.\n\n"
+                "The photo taken after cleaning is attached. You can also see it in the app under My reports.\n\n"
+                "Thank you for helping keep the city clean."
+            )
+        elif event == "assigned":
+            subject = f"Clean City: a team is on the way for report #{number}"
+            text = (
+                f"Your report #{number} at {place} has been assigned to: {info['assigned_to']}.\n\n"
+                "You will get another message with a photo once the spot is cleaned."
+            )
+        else:
+            subject = f"Clean City: your report #{number} was not accepted"
+            text = (
+                f"The municipal team reviewed your report #{number} at {place} and did not accept it.\n\n"
+                f"Reason: {info['staff_note']}"
+            )
+        if info["contact_type"] != "email":
+            print(f"\n[DEV MODE] SMS to {info['contact']}: {subject}\n", flush=True)
+            return
+        if event == "cleaned" and info["after_photo_path"]:
+            attachment = storage.read_bytes(info["after_photo_path"])
         send_email(info["contact"], subject, text, attachment)
     except Exception as exc:
         print("Could not send notification:", exc, flush=True)
@@ -123,7 +124,7 @@ def list_complaints(status: str = "", user=Depends(auth.require_staff)):
         rows = conn.execute(sql + " ORDER BY c.id DESC", params).fetchall()
         counts = {
             r[0]: r[1]
-            for r in conn.execute("SELECT status, COUNT(*) FROM complaints GROUP BY status")
+            for r in conn.execute("SELECT status, COUNT(*) FROM complaints GROUP BY status").fetchall()
         }
     finally:
         conn.close()
@@ -131,12 +132,7 @@ def list_complaints(status: str = "", user=Depends(auth.require_staff)):
 
 
 @router.post("/complaints/{complaint_id}/assign")
-def assign(
-    complaint_id: int,
-    body: AssignBody,
-    background: BackgroundTasks,
-    user=Depends(auth.require_staff),
-):
+def assign(complaint_id: int, body: AssignBody, user=Depends(auth.require_staff)):
     team = body.team.strip()[:100]
     if not team:
         raise HTTPException(400, "Enter the name of the team or worker.")
@@ -153,17 +149,12 @@ def assign(
         row = get_complaint(conn, complaint_id)
     finally:
         conn.close()
-    background.add_task(notify, dict(row), "assigned")
+    notify(dict(row), "assigned")
     return staff_dict(row)
 
 
 @router.post("/complaints/{complaint_id}/reject")
-def reject(
-    complaint_id: int,
-    body: RejectBody,
-    background: BackgroundTasks,
-    user=Depends(auth.require_staff),
-):
+def reject(complaint_id: int, body: RejectBody, user=Depends(auth.require_staff)):
     reason = body.reason.strip()[:300]
     if not reason:
         raise HTTPException(400, "Enter the reason for rejecting this report.")
@@ -180,14 +171,13 @@ def reject(
         row = get_complaint(conn, complaint_id)
     finally:
         conn.close()
-    background.add_task(notify, dict(row), "rejected")
+    notify(dict(row), "rejected")
     return staff_dict(row)
 
 
 @router.post("/complaints/{complaint_id}/clean")
 def mark_cleaned(
     complaint_id: int,
-    background: BackgroundTasks,
     photo: UploadFile = File(...),
     confirm: bool = Form(False),
     user=Depends(auth.require_staff),
@@ -207,16 +197,16 @@ def mark_cleaned(
         if score >= checks.GARBAGE_THRESHOLD:
             raise HTTPException(409, "This photo still seems to show garbage.")
 
-    name = save_photo(img)
+    stored = storage.save_image(img)
     conn = get_db()
     try:
         conn.execute(
             "UPDATE complaints SET status = 'cleaned', after_photo_path = ?, cleaned_at = ? WHERE id = ?",
-            (name, auth.now_utc().isoformat(), complaint_id),
+            (stored, auth.now_utc().isoformat(), complaint_id),
         )
         conn.commit()
         row = get_complaint(conn, complaint_id)
     finally:
         conn.close()
-    background.add_task(notify, dict(row), "cleaned", UPLOAD_DIR / name)
+    notify(dict(row), "cleaned")
     return staff_dict(row)

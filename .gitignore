@@ -5,3 +5,5 @@ __pycache__/
 secret.key
 cleancity.db
 uploads/
+models/*.onnx
+models/*.part

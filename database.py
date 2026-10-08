@@ -1,8 +1,16 @@
-﻿import sqlite3
+﻿"""Database access. Uses hosted Postgres when DATABASE_URL is set (for example on Vercel), otherwise a local SQLite file."""
+import os
+import sqlite3
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 DB_PATH = Path(__file__).parent / "cleancity.db"
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or ""
+USE_POSTGRES = DATABASE_URL.startswith("postgres")
 
 EXTRA_COMPLAINT_COLUMNS = {
     "embedding": "BLOB",
@@ -11,8 +19,126 @@ EXTRA_COMPLAINT_COLUMNS = {
     "staff_note": "TEXT",
 }
 
+SQLITE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact TEXT UNIQUE NOT NULL,
+    contact_type TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'citizen',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS otps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS complaints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    photo_path TEXT NOT NULL,
+    photo_hash TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    address TEXT,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    ai_score REAL,
+    after_photo_path TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cleaned_at TEXT
+);
+"""
+
+POSTGRES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    contact TEXT UNIQUE NOT NULL,
+    contact_type TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'citizen',
+    created_at TEXT NOT NULL DEFAULT (now()::text)
+);
+
+CREATE TABLE IF NOT EXISTS otps (
+    id SERIAL PRIMARY KEY,
+    contact TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (now()::text)
+);
+
+CREATE TABLE IF NOT EXISTS complaints (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    photo_path TEXT NOT NULL,
+    photo_hash TEXT,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    address TEXT,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    ai_score DOUBLE PRECISION,
+    after_photo_path TEXT,
+    created_at TEXT NOT NULL DEFAULT (now()::text),
+    cleaned_at TEXT,
+    embedding BYTEA,
+    fake_score DOUBLE PRECISION,
+    assigned_to TEXT,
+    staff_note TEXT
+)
+"""
+
+
+class Row(dict):
+    """A Postgres row that can be read by column name or by position, like a SQLite row."""
+
+    def __init__(self, names, values):
+        super().__init__(zip(names, values))
+        self._values = tuple(values)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+
+def _row_factory(cursor):
+    names = [column.name for column in cursor.description] if cursor.description else []
+
+    def make_row(values):
+        return Row(names, values)
+
+    return make_row
+
+
+class PostgresConnection:
+    """Gives a Postgres connection the same small interface the app uses with SQLite."""
+
+    def __init__(self):
+        import psycopg
+
+        self._conn = psycopg.connect(DATABASE_URL, row_factory=_row_factory, prepare_threshold=None)
+
+    def execute(self, sql, params=()):
+        return self._conn.execute(sql.replace("?", "%s"), params)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
 
 def get_db():
+    if USE_POSTGRES:
+        return PostgresConnection()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -21,48 +147,19 @@ def get_db():
 
 def init_db():
     conn = get_db()
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        contact TEXT UNIQUE NOT NULL,
-        contact_type TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'citizen',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS otps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        contact TEXT NOT NULL,
-        code_hash TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        used INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS complaints (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        photo_path TEXT NOT NULL,
-        photo_hash TEXT,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        address TEXT,
-        description TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        ai_score REAL,
-        after_photo_path TEXT,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        cleaned_at TEXT
-    );
-    """)
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(complaints)")}
-    for name, kind in EXTRA_COMPLAINT_COLUMNS.items():
-        if name not in existing:
-            try:
-                conn.execute(f"ALTER TABLE complaints ADD COLUMN {name} {kind}")
-            except sqlite3.OperationalError:
-                pass
+    if USE_POSTGRES:
+        for statement in POSTGRES_SCHEMA.split(";"):
+            if statement.strip():
+                conn.execute(statement)
+    else:
+        conn.executescript(SQLITE_SCHEMA)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(complaints)")}
+        for name, kind in EXTRA_COMPLAINT_COLUMNS.items():
+            if name not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE complaints ADD COLUMN {name} {kind}")
+                except sqlite3.OperationalError:
+                    pass
     conn.commit()
     conn.close()
 
@@ -92,6 +189,7 @@ def list_staff():
 
 
 if __name__ == "__main__":
+    print("Database:", "hosted Postgres" if USE_POSTGRES else f"local SQLite file ({DB_PATH.name})")
     init_db()
     args = sys.argv[1:]
     if len(args) == 2 and args[0] in ("staff", "citizen"):
@@ -112,7 +210,4 @@ if __name__ == "__main__":
         if not staff:
             print("  (none yet)")
     else:
-        conn = get_db()
-        cols = [row[1] for row in conn.execute("PRAGMA table_info(complaints)")]
-        conn.close()
-        print("Database ready. Complaint columns:", ", ".join(cols))
+        print("Database ready.")

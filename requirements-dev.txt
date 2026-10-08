@@ -1,0 +1,5 @@
+-r requirements.txt
+torch==2.14.1
+transformers==5.19.0
+onnx==1.23.2
+onnxscript==0.7.2

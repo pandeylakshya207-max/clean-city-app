@@ -1,8 +1,6 @@
 ﻿import io
 import math
-import uuid
 from datetime import timedelta
-from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -10,11 +8,8 @@ from PIL import Image, ImageOps
 
 import auth
 import checks
+import storage
 from database import get_db
-
-BASE_DIR = Path(__file__).parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
 
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
 MIN_SIDE_PIXELS = 400
@@ -41,12 +36,6 @@ def load_photo(data):
         raise HTTPException(400, "The photo is too small to use. Please take a clearer one.")
     img.thumbnail((MAX_SIDE_PIXELS, MAX_SIDE_PIXELS))
     return img
-
-
-def save_photo(img):
-    name = uuid.uuid4().hex + ".jpg"
-    img.save(UPLOAD_DIR / name, "JPEG", quality=85)
-    return name
 
 
 def find_address(lat, lon):
@@ -81,10 +70,11 @@ def fill_missing_vectors(conn):
     ).fetchall()
     changed = False
     for row in rows:
-        path = UPLOAD_DIR / row["photo_path"]
-        if not path.exists():
+        try:
+            img = Image.open(io.BytesIO(storage.read_bytes(row["photo_path"]))).convert("RGB")
+        except Exception:
             continue
-        _, _, vec = checks.analyze(Image.open(path).convert("RGB"))
+        _, _, vec = checks.analyze(img)
         conn.execute(
             "UPDATE complaints SET embedding = ? WHERE id = ?", (checks.to_bytes(vec), row["id"])
         )
@@ -94,11 +84,10 @@ def fill_missing_vectors(conn):
 
 
 def to_dict(row):
-    after = row["after_photo_path"]
     return {
         "id": row["id"],
-        "photo_url": "/uploads/" + row["photo_path"],
-        "after_photo_url": ("/uploads/" + after) if after else None,
+        "photo_url": storage.photo_url(row["photo_path"]),
+        "after_photo_url": storage.photo_url(row["after_photo_path"]),
         "latitude": row["latitude"],
         "longitude": row["longitude"],
         "address": row["address"],
@@ -137,7 +126,7 @@ def create_complaint(
             r[0]
             for r in conn.execute(
                 "SELECT photo_hash FROM complaints WHERE photo_hash IS NOT NULL AND status != 'rejected'"
-            )
+            ).fetchall()
         ]
         fill_missing_vectors(conn)
         nearby = []
@@ -155,17 +144,17 @@ def create_complaint(
     if not result["ok"]:
         raise HTTPException(400, result["reason"])
 
-    name = save_photo(img)
+    stored = storage.save_image(img)
     address = find_address(latitude, longitude)
     conn = get_db()
     try:
         cur = conn.execute(
             "INSERT INTO complaints (user_id, photo_path, photo_hash, ai_score, fake_score, embedding,"
             " latitude, longitude, address, description, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             (
                 user["id"],
-                name,
+                stored,
                 result["hash"],
                 result["score"],
                 result.get("fake_score"),
@@ -177,8 +166,9 @@ def create_complaint(
                 auth.now_utc().isoformat(),
             ),
         )
+        new_id = cur.fetchone()[0]
         conn.commit()
-        row = conn.execute("SELECT * FROM complaints WHERE id = ?", (cur.lastrowid,)).fetchone()
+        row = conn.execute("SELECT * FROM complaints WHERE id = ?", (new_id,)).fetchone()
     finally:
         conn.close()
     return to_dict(row)

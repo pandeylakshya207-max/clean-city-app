@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.clean_city_app_six.twa",
+    "sha256_cert_fingerprints": ["58:15:33:43:5B:C7:06:C4:D4:A3:39:24:F0:3B:39:42:15:A8:B9:C5:7A:4A:12:A2:51:5A:4F:11:85:FC:C7:63"]
+  }
+}]

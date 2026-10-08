@@ -11,7 +11,7 @@ import checks
 import complaints
 import staff
 import storage
-from database import USE_POSTGRES, init_db
+from database import USE_POSTGRES, init_db, set_role
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -22,6 +22,21 @@ try:
 except Exception as exc:
     DATABASE_ERROR = f"{type(exc).__name__}: {exc}"
     print("Database setup failed:", DATABASE_ERROR, flush=True)
+
+def register_staff_from_settings():
+    """Staff are registered in advance from the STAFF_CONTACTS setting (comma-separated emails or numbers)."""
+    for item in os.getenv("STAFF_CONTACTS", "").split(","):
+        if not item.strip():
+            continue
+        try:
+            contact, contact_type = auth.normalize_contact(item)
+            set_role(contact, contact_type, "staff")
+        except Exception as exc:
+            print("Could not register staff contact", item.strip(), "-", exc, flush=True)
+
+
+if DATABASE_ERROR is None:
+    register_staff_from_settings()
 
 app = FastAPI(title="Clean City")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -118,5 +133,6 @@ def report_page():
 @app.get("/dashboard")
 def dashboard_page():
     return page("dashboard.html")
+
 
 

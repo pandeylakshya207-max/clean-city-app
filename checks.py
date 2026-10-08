@@ -33,12 +33,33 @@ def models_status():
     return status
 
 
+MODEL_URLS = {
+    "clip_vision.onnx": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx",
+    "detector.onnx": "https://github.com/pandeylakshya207-max/clean-city-app/releases/download/models-v1/detector.onnx",
+}
+
+
+def _session_from_download(ort, name):
+    """Small servers cannot package the large model files, so load them straight into memory instead."""
+    import httpx
+
+    print(f"Model file {name} is not on disk, downloading it into memory...", flush=True)
+    with httpx.Client(follow_redirects=True, timeout=180) as client:
+        response = client.get(MODEL_URLS[name])
+        response.raise_for_status()
+        data = response.content
+    session = ort.InferenceSession(data, providers=["CPUExecutionProvider"])
+    print(f"Model {name} loaded ({len(data) / 1e6:.0f} MB).", flush=True)
+    del data, response
+    return session
+
+
 def _session(name):
     import onnxruntime as ort
 
     path = MODELS / name
     if not path.exists():
-        raise RuntimeError(f"Model file {name} is missing from the models folder.")
+        return _session_from_download(ort, name)
     return ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
 
 
@@ -225,4 +246,5 @@ if __name__ == "__main__":
         score, best, _ = analyze(photo)
         ai_score = ai_generated_score(photo)
         print(f"Report #{row['id']}: garbage {score:.2f} | AI-generated {ai_score:.2f} | {best}")
+
 

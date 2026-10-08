@@ -1,0 +1,366 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean City - Report garbage</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: #eef3ef; color: #17231c;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: #1f7a4d; color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  header .name { font-weight: 700; font-size: 17px; }
+  header .who { font-size: 12px; opacity: 0.85; overflow-wrap: anywhere; }
+  header button {
+    width: auto; margin: 0; padding: 8px 12px; font-size: 14px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+  main { max-width: 520px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 4px 24px rgba(23, 35, 28, 0.08);
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  p { margin: 0 0 14px; color: #55645b; font-size: 15px; line-height: 1.45; }
+  button {
+    width: 100%; margin-top: 12px; padding: 13px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 10px; background: #1f7a4d; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  button.secondary { background: #e3ebe5; color: #17231c; }
+  video, .preview { width: 100%; border-radius: 12px; background: #000; display: block; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+  textarea {
+    width: 100%; min-height: 70px; padding: 12px; font: inherit; font-size: 16px;
+    border: 1.5px solid #cfd8d2; border-radius: 10px; resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: #1f7a4d; }
+  .loc { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #f1f6f2; font-size: 14px; }
+  .msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: #b3261e; }
+  .msg.ok { color: #1f7a4d; }
+  .item { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ece8; }
+  .item:first-child { border-top: 0; padding-top: 0; }
+  .thumb { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; flex: none; background: #e3ebe5; }
+  .info { min-width: 0; flex: 1; font-size: 14px; }
+  .addr { font-weight: 600; overflow-wrap: anywhere; }
+  .meta { color: #55645b; margin-top: 4px; font-size: 13px; overflow-wrap: anywhere; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-top: 6px; }
+  .badge.pending { background: #fff1cc; color: #6b5200; }
+  .badge.assigned { background: #dbe9ff; color: #0b3d91; }
+  .badge.cleaned { background: #d6f2e1; color: #135c38; }
+  .badge.rejected { background: #fde0de; color: #8c1d18; }
+  .after { margin-top: 8px; }
+  .after img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; display: block; margin-top: 6px; }
+  a { color: #1f7a4d; }
+  .empty { color: #55645b; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="name">Clean City</div>
+    <div class="who" id="who"></div>
+  </div>
+  <button id="logout-btn" type="button">Log out</button>
+</header>
+
+<main>
+  <section class="card">
+    <h1>Report garbage</h1>
+
+    <div id="step-start">
+      <p>Take a live photo of the garbage. Your location is added automatically so the municipal team can find the spot.</p>
+      <button id="open-btn" type="button">Open camera</button>
+    </div>
+
+    <div id="step-camera" hidden>
+      <video id="video" autoplay playsinline muted></video>
+      <button id="snap-btn" type="button">Take photo</button>
+      <button id="cancel-btn" type="button" class="secondary">Cancel</button>
+    </div>
+
+    <div id="step-review" hidden>
+      <img id="preview" class="preview" alt="Photo you just took">
+      <label for="description">Add a note (optional)</label>
+      <textarea id="description" maxlength="500" placeholder="For example: near the bus stop, piled up for 3 days"></textarea>
+      <button id="submit-btn" type="button">Submit report</button>
+      <button id="retake-btn" type="button" class="secondary">Retake photo</button>
+    </div>
+
+    <div id="loc" class="loc" hidden></div>
+    <div id="msg" class="msg" role="alert"></div>
+  </section>
+
+  <section class="card">
+    <h2>My reports</h2>
+    <div id="list"><div class="empty">Loading...</div></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const token = localStorage.getItem("cc_token");
+const STATUS_LABELS = {
+  pending: "Received",
+  assigned: "Team assigned",
+  cleaned: "Cleaned",
+  rejected: "Rejected",
+};
+
+let stream = null;
+let photoBlob = null;
+let previewUrl = null;
+let position = null;
+let watchId = null;
+
+function logout() {
+  localStorage.removeItem("cc_token");
+  window.location.href = "/";
+}
+
+function setMsg(text, ok) {
+  $("msg").textContent = text || "";
+  $("msg").className = "msg" + (ok ? " ok" : "");
+}
+
+function show(step) {
+  for (const id of ["step-start", "step-camera", "step-review"]) {
+    $(id).hidden = id !== step;
+  }
+}
+
+async function api(path, options) {
+  const opts = options || {};
+  opts.headers = Object.assign({}, opts.headers, { Authorization: "Bearer " + token });
+  const res = await fetch(path, opts);
+  if (res.status === 401) {
+    logout();
+    throw new Error("Please log in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
+  }
+  return data;
+}
+
+function showLocation() {
+  const box = $("loc");
+  box.hidden = false;
+  if (!position) {
+    box.textContent = "Finding your location...";
+    return;
+  }
+  box.textContent = "Location: " + position.latitude.toFixed(5) + ", " + position.longitude.toFixed(5) +
+    " (accurate to about " + Math.round(position.accuracy) + " m)";
+}
+
+function startLocation() {
+  if (!navigator.geolocation) {
+    setMsg("This browser cannot share location, so a report cannot be sent from it.");
+    return;
+  }
+  showLocation();
+  if (watchId !== null) return;
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      position = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      };
+      showLocation();
+    },
+    (err) => {
+      if (err.code === err.PERMISSION_DENIED) {
+        $("loc").textContent = "Location is blocked. Allow location for this site in your browser, then reload the page.";
+      } else if (!position) {
+        $("loc").textContent = "Could not find your location yet. Make sure location is turned on.";
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+  );
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+    stream = null;
+  }
+  $("video").srcObject = null;
+}
+
+async function openCamera() {
+  setMsg("");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setMsg("This browser cannot open the camera here.");
+    return;
+  }
+  startLocation();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+  } catch (err) {
+    setMsg("Could not open the camera. Allow camera access for this site and try again.");
+    return;
+  }
+  $("video").srcObject = stream;
+  show("step-camera");
+}
+
+function takePhoto() {
+  const video = $("video");
+  if (!video.videoWidth) {
+    setMsg("The camera is still starting. Try again in a moment.");
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  canvas.toBlob((blob) => {
+    photoBlob = blob;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    $("preview").src = previewUrl;
+    stopCamera();
+    show("step-review");
+  }, "image/jpeg", 0.9);
+}
+
+function reset() {
+  stopCamera();
+  photoBlob = null;
+  $("description").value = "";
+  $("loc").hidden = true;
+  show("step-start");
+}
+
+async function submitReport() {
+  if (!photoBlob) return;
+  if (!position) {
+    setMsg("Still waiting for your location. Turn on location and try again in a few seconds.");
+    return;
+  }
+  setMsg("");
+  const btn = $("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Sending...";
+  try {
+    const form = new FormData();
+    form.append("photo", photoBlob, "photo.jpg");
+    form.append("latitude", position.latitude);
+    form.append("longitude", position.longitude);
+    form.append("description", $("description").value);
+    const saved = await api("/api/complaints", { method: "POST", body: form });
+    reset();
+    setMsg("Report #" + saved.id + " sent. Location: " + (saved.address || "coordinates saved") + ".", true);
+    loadReports();
+  } catch (err) {
+    setMsg(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Submit report";
+  }
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderReport(c) {
+  const item = el("div", "item");
+  const img = el("img", "thumb");
+  img.src = c.photo_url;
+  img.alt = "Garbage photo for report " + c.id;
+  img.loading = "lazy";
+  item.appendChild(img);
+
+  const info = el("div", "info");
+  const coords = c.latitude.toFixed(5) + ", " + c.longitude.toFixed(5);
+  info.appendChild(el("div", "addr", c.address || coords));
+
+  const meta = el("div", "meta", "Report #" + c.id + " | " + formatDate(c.created_at) + " | ");
+  const link = el("a", "", "View on map");
+  link.href = "https://www.openstreetmap.org/?mlat=" + c.latitude + "&mlon=" + c.longitude +
+    "#map=18/" + c.latitude + "/" + c.longitude;
+  link.target = "_blank";
+  link.rel = "noopener";
+  meta.appendChild(link);
+  info.appendChild(meta);
+
+  if (c.description) info.appendChild(el("div", "meta", c.description));
+  info.appendChild(el("span", "badge " + c.status, STATUS_LABELS[c.status] || c.status));
+  if (c.status === "assigned") info.appendChild(el("div", "meta", "A municipal team has been assigned to clean this spot."));
+  if (c.status === "rejected" && c.staff_note) info.appendChild(el("div", "meta", "Reason: " + c.staff_note));
+
+  if (c.after_photo_url) {
+    const after = el("div", "after");
+    const when = c.cleaned_at ? "Cleaned on " + formatDate(c.cleaned_at) + ". " : "";
+    after.appendChild(el("div", "meta", when + "Photo after cleaning:"));
+    const afterImg = el("img");
+    afterImg.src = c.after_photo_url;
+    afterImg.alt = "Photo after cleaning for report " + c.id;
+    after.appendChild(afterImg);
+    info.appendChild(after);
+  }
+
+  item.appendChild(info);
+  return item;
+}
+
+async function loadReports() {
+  const list = $("list");
+  try {
+    const items = await api("/api/complaints/mine");
+    list.replaceChildren();
+    if (!items.length) {
+      list.appendChild(el("div", "empty", "You have not reported anything yet."));
+      return;
+    }
+    for (const c of items) list.appendChild(renderReport(c));
+  } catch (err) {
+    list.replaceChildren(el("div", "empty", err.message));
+  }
+}
+
+$("open-btn").addEventListener("click", openCamera);
+$("snap-btn").addEventListener("click", takePhoto);
+$("cancel-btn").addEventListener("click", reset);
+$("retake-btn").addEventListener("click", () => { photoBlob = null; openCamera(); });
+$("submit-btn").addEventListener("click", submitReport);
+$("logout-btn").addEventListener("click", logout);
+
+(async () => {
+  if (!token) {
+    logout();
+    return;
+  }
+  try {
+    const user = await api("/api/me");
+    $("who").textContent = user.contact;
+  } catch (err) {
+    return;
+  }
+  loadReports();
+})();
+</script>
+</body>
+</html>
+

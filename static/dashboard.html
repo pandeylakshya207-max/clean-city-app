@@ -1,0 +1,335 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean City - Municipal dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: #eef3ef; color: #17231c;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: #14532d; color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  header .name { font-weight: 700; font-size: 17px; }
+  header .who { font-size: 12px; opacity: 0.85; overflow-wrap: anywhere; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  button {
+    padding: 10px 14px; font-size: 14px; font-weight: 600; border: 0; border-radius: 8px;
+    background: #1f7a4d; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  button.danger { background: #b3261e; }
+  header button { background: rgba(255, 255, 255, 0.18); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .tab { background: #fff; color: #17231c; border: 1.5px solid #cfd8d2; }
+  .tab.active { background: #1f7a4d; color: #fff; border-color: #1f7a4d; }
+  .card {
+    background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px;
+    box-shadow: 0 2px 12px rgba(23, 35, 28, 0.07);
+    display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+  }
+  @media (max-width: 640px) { .card { grid-template-columns: 1fr; } }
+  .photos img { width: 100%; border-radius: 10px; display: block; background: #e3ebe5; }
+  .cap { font-size: 12px; color: #55645b; margin: 6px 0 4px; }
+  .cap:first-child { margin-top: 0; }
+  .addr { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+  .meta { color: #55645b; font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; margin: 8px 6px 0 0;
+  }
+  .badge.pending { background: #fff1cc; color: #6b5200; }
+  .badge.assigned { background: #dbe9ff; color: #0b3d91; }
+  .badge.cleaned { background: #d6f2e1; color: #135c38; }
+  .badge.rejected, .badge.warn { background: #fde0de; color: #8c1d18; }
+  .actions { margin-top: 12px; border-top: 1px solid #e6ece8; padding-top: 12px; display: grid; gap: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input[type=text] {
+    flex: 1; min-width: 160px; padding: 9px 10px; font-size: 14px;
+    border: 1.5px solid #cfd8d2; border-radius: 8px;
+  }
+  .row input[type=file] { flex: 1; min-width: 160px; font-size: 13px; }
+  .msg { font-size: 13px; color: #b3261e; min-height: 16px; }
+  a { color: #1f7a4d; }
+  .empty { color: #55645b; padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="name">Clean City - Municipal dashboard</div>
+    <div class="who" id="who"></div>
+  </div>
+  <button id="logout-btn" type="button">Log out</button>
+</header>
+
+<main>
+  <div id="tabs" class="tabs"></div>
+  <div id="list"><div class="empty">Loading...</div></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const token = localStorage.getItem("cc_token");
+const STATUS_LABELS = {
+  pending: "Received",
+  assigned: "Team assigned",
+  cleaned: "Cleaned",
+  rejected: "Rejected",
+};
+const TABS = [
+  ["", "All"],
+  ["pending", "Received"],
+  ["assigned", "Team assigned"],
+  ["cleaned", "Cleaned"],
+  ["rejected", "Rejected"],
+];
+let currentStatus = "";
+
+function logout() {
+  localStorage.removeItem("cc_token");
+  window.location.href = "/";
+}
+
+async function api(path, options) {
+  const opts = options || {};
+  opts.headers = Object.assign({}, opts.headers, { Authorization: "Bearer " + token });
+  const res = await fetch(path, opts);
+  if (res.status === 401) {
+    logout();
+    throw new Error("Please log in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
+    error.status = res.status;
+    throw error;
+  }
+  return data;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function percent(value) {
+  return value === null || value === undefined ? "not checked" : Math.round(value * 100) + "%";
+}
+
+function photoBlock(parent, caption, url, alt) {
+  parent.appendChild(el("div", "cap", caption));
+  const link = el("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  const img = el("img");
+  img.src = url;
+  img.alt = alt;
+  img.loading = "lazy";
+  link.appendChild(img);
+  parent.appendChild(link);
+}
+
+function renderTabs(counts) {
+  const box = $("tabs");
+  box.replaceChildren();
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  for (const [value, label] of TABS) {
+    const count = value ? (counts[value] || 0) : total;
+    const btn = el("button", "tab" + (value === currentStatus ? " active" : ""), label + " (" + count + ")");
+    btn.type = "button";
+    btn.addEventListener("click", () => { currentStatus = value; load(); });
+    box.appendChild(btn);
+  }
+  const refresh = el("button", "tab", "Refresh");
+  refresh.type = "button";
+  refresh.addEventListener("click", load);
+  box.appendChild(refresh);
+}
+
+function renderActions(c) {
+  const box = el("div", "actions");
+  const msg = el("div", "msg");
+  const base = "/api/staff/complaints/" + c.id;
+
+  const run = async (btn, work) => {
+    msg.textContent = "";
+    btn.disabled = true;
+    try {
+      await work();
+      await load();
+    } catch (err) {
+      msg.textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+
+  const postJson = (path, body) => api(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const assignRow = el("div", "row");
+  const team = el("input");
+  team.type = "text";
+  team.placeholder = "Team or worker name";
+  team.maxLength = 100;
+  team.value = c.assigned_to || "";
+  team.setAttribute("aria-label", "Team or worker name for report " + c.id);
+  const assignBtn = el("button", "", c.status === "assigned" ? "Change team" : "Assign team");
+  assignBtn.type = "button";
+  assignBtn.addEventListener("click", () => run(assignBtn, () => postJson(base + "/assign", { team: team.value })));
+  assignRow.appendChild(team);
+  assignRow.appendChild(assignBtn);
+  box.appendChild(assignRow);
+
+  const cleanRow = el("div", "row");
+  const file = el("input");
+  file.type = "file";
+  file.accept = "image/*";
+  file.setAttribute("capture", "environment");
+  file.setAttribute("aria-label", "Photo after cleaning for report " + c.id);
+  const cleanBtn = el("button", "", "Mark cleaned with this photo");
+  cleanBtn.type = "button";
+  cleanBtn.addEventListener("click", () => run(cleanBtn, async () => {
+    if (!file.files.length) {
+      throw new Error("First choose or take the photo of the cleaned spot.");
+    }
+    const send = (confirmed) => {
+      const form = new FormData();
+      form.append("photo", file.files[0]);
+      form.append("confirm", confirmed ? "true" : "false");
+      return api(base + "/clean", { method: "POST", body: form });
+    };
+    try {
+      await send(false);
+    } catch (err) {
+      if (err.status !== 409) throw err;
+      const ok = window.confirm("This photo still seems to show garbage. Mark the report as cleaned anyway?");
+      if (!ok) throw new Error("Not uploaded. Take a photo of the cleaned spot and try again.");
+      await send(true);
+    }
+  }));
+  cleanRow.appendChild(file);
+  cleanRow.appendChild(cleanBtn);
+  box.appendChild(cleanRow);
+
+  const rejectRow = el("div", "row");
+  const reason = el("input");
+  reason.type = "text";
+  reason.placeholder = "Reason for rejecting (shown to the reporter)";
+  reason.maxLength = 300;
+  reason.setAttribute("aria-label", "Reason for rejecting report " + c.id);
+  const rejectBtn = el("button", "danger", "Reject report");
+  rejectBtn.type = "button";
+  rejectBtn.addEventListener("click", () => run(rejectBtn, () => postJson(base + "/reject", { reason: reason.value })));
+  rejectRow.appendChild(reason);
+  rejectRow.appendChild(rejectBtn);
+  box.appendChild(rejectRow);
+
+  box.appendChild(msg);
+  return box;
+}
+
+function renderCard(c) {
+  const card = el("div", "card");
+
+  const photos = el("div", "photos");
+  photoBlock(photos, "Reported photo", c.photo_url, "Reported photo for report " + c.id);
+  if (c.after_photo_url) {
+    photoBlock(photos, "After cleaning", c.after_photo_url, "Photo after cleaning for report " + c.id);
+  }
+  card.appendChild(photos);
+
+  const info = el("div");
+  info.appendChild(el("div", "addr", "#" + c.id + " | " + (c.address || "Address not found")));
+
+  const coords = c.latitude.toFixed(5) + ", " + c.longitude.toFixed(5);
+  const where = el("div", "meta", "Coordinates: " + coords + " | ");
+  const map = el("a", "", "Open in Google Maps");
+  map.href = "https://www.google.com/maps?q=" + c.latitude + "," + c.longitude;
+  map.target = "_blank";
+  map.rel = "noopener";
+  where.appendChild(map);
+  info.appendChild(where);
+
+  info.appendChild(el("div", "meta", "Reported by " + c.reporter + " on " + formatDate(c.created_at)));
+  if (c.description) info.appendChild(el("div", "meta", "Note from reporter: " + c.description));
+  info.appendChild(el("div", "meta",
+    "AI check: garbage " + percent(c.garbage_score) + ", AI-generated " + percent(c.fake_score)));
+
+  info.appendChild(el("span", "badge " + c.status, STATUS_LABELS[c.status] || c.status));
+  if (c.possible_fake) {
+    info.appendChild(el("span", "badge warn", "Possible fake photo - check before sending a team"));
+  }
+  if (c.assigned_to) info.appendChild(el("div", "meta", "Assigned to: " + c.assigned_to));
+  if (c.status === "cleaned" && c.cleaned_at) {
+    info.appendChild(el("div", "meta", "Cleaned on " + formatDate(c.cleaned_at)));
+  }
+  if (c.status === "rejected" && c.staff_note) {
+    info.appendChild(el("div", "meta", "Rejected: " + c.staff_note));
+  }
+  if (c.status === "pending" || c.status === "assigned") {
+    info.appendChild(renderActions(c));
+  }
+  card.appendChild(info);
+  return card;
+}
+
+async function load() {
+  const list = $("list");
+  try {
+    const query = currentStatus ? "?status=" + currentStatus : "";
+    const data = await api("/api/staff/complaints" + query);
+    renderTabs(data.counts);
+    list.replaceChildren();
+    if (!data.complaints.length) {
+      list.appendChild(el("div", "empty", "No reports here."));
+      return;
+    }
+    for (const c of data.complaints) list.appendChild(renderCard(c));
+  } catch (err) {
+    list.replaceChildren(el("div", "empty", err.message));
+  }
+}
+
+$("logout-btn").addEventListener("click", logout);
+
+(async () => {
+  if (!token) {
+    logout();
+    return;
+  }
+  let user;
+  try {
+    user = await api("/api/me");
+  } catch (err) {
+    return;
+  }
+  $("who").textContent = user.contact;
+  if (user.role !== "staff") {
+    const box = el("div", "empty", "This page is only for municipal staff. ");
+    const link = el("a", "", "Go to the report page");
+    link.href = "/report";
+    box.appendChild(link);
+    $("list").replaceChildren(box);
+    return;
+  }
+  load();
+})();
+</script>
+</body>
+</html>

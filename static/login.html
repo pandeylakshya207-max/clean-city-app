@@ -1,0 +1,210 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean City - Login</title>
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100vh; padding: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #eef3ef; color: #17231c;
+  }
+  .card {
+    width: 100%; max-width: 400px; background: #fff; border-radius: 16px;
+    padding: 28px 24px; box-shadow: 0 4px 24px rgba(23, 35, 28, 0.08);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .logo {
+    width: 40px; height: 40px; border-radius: 10px; background: #1f7a4d; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+  .brand-name { font-size: 18px; font-weight: 700; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { margin: 0 0 18px; color: #55645b; font-size: 15px; line-height: 1.45; }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  input {
+    width: 100%; padding: 13px 14px; font-size: 16px; border: 1.5px solid #cfd8d2;
+    border-radius: 10px; outline: none; background: #fff; color: inherit;
+  }
+  input:focus { border-color: #1f7a4d; box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.15); }
+  #code { letter-spacing: 8px; text-align: center; font-size: 22px; font-weight: 600; }
+  button {
+    width: 100%; margin-top: 14px; padding: 13px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 10px; background: #1f7a4d; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  button.link { background: none; color: #1f7a4d; padding: 8px; margin-top: 8px; }
+  .msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: #b3261e; }
+  .msg.ok { color: #1f7a4d; }
+  .hint {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: #fff7e0; color: #6b5200; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <div class="logo">CC</div>
+    <div class="brand-name">Clean City</div>
+  </div>
+
+  <form id="step-contact">
+    <h1>Log in</h1>
+    <p>Report garbage in your area and track the clean-up.</p>
+    <label for="contact">Email or mobile number</label>
+    <input id="contact" type="text" autocomplete="username" placeholder="you@example.com or 9876543210" required>
+    <button id="send-btn" type="submit">Send code</button>
+    <div id="msg-contact" class="msg" role="alert"></div>
+  </form>
+
+  <form id="step-otp" hidden>
+    <h1>Enter your code</h1>
+    <p>We sent a 6-digit code to <strong id="sent-to"></strong>. It is valid for 5 minutes.</p>
+    <label for="code">6-digit code</label>
+    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+    <div id="dev-hint" class="hint" hidden>Test mode: the code is printed in the terminal where the server is running.</div>
+    <button id="verify-btn" type="submit">Verify and log in</button>
+    <button id="resend-btn" type="button" class="link">Resend code</button>
+    <button id="change-btn" type="button" class="link">Use a different email or number</button>
+    <div id="msg-otp" class="msg" role="alert"></div>
+  </form>
+
+  <section id="step-done" hidden>
+    <h1>You are logged in</h1>
+    <p>Signed in as <strong id="who"></strong>.</p>
+    <button id="logout-btn" type="button">Log out</button>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let contact = "";
+let cooldownTimer = null;
+
+function show(step) {
+  for (const id of ["step-contact", "step-otp", "step-done"]) {
+    $(id).hidden = id !== step;
+  }
+}
+
+function setMsg(id, text, ok) {
+  $(id).textContent = text || "";
+  $(id).className = "msg" + (ok ? " ok" : "");
+}
+
+async function post(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
+  }
+  return data;
+}
+
+function startCooldown() {
+  let left = 30;
+  const btn = $("resend-btn");
+  btn.disabled = true;
+  clearInterval(cooldownTimer);
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(cooldownTimer);
+      btn.disabled = false;
+      btn.textContent = "Resend code";
+      return;
+    }
+    btn.textContent = "Resend code in " + left + "s";
+    left -= 1;
+  };
+  tick();
+  cooldownTimer = setInterval(tick, 1000);
+}
+
+async function sendCode() {
+  const data = await post("/api/auth/request-otp", { contact });
+  contact = data.contact;
+  $("sent-to").textContent = data.contact;
+  $("dev-hint").hidden = data.delivery !== "dev";
+  $("code").value = "";
+  show("step-otp");
+  $("code").focus();
+  startCooldown();
+}
+
+function showLoggedIn(user) {
+  $("who").textContent = user.contact;
+  window.location.href = user.role === "staff" ? "/dashboard" : "/report";
+}
+
+$("step-contact").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  contact = $("contact").value;
+  setMsg("msg-contact", "");
+  $("send-btn").disabled = true;
+  try {
+    await sendCode();
+    setMsg("msg-otp", "");
+  } catch (err) {
+    setMsg("msg-contact", err.message);
+  } finally {
+    $("send-btn").disabled = false;
+  }
+});
+
+$("resend-btn").addEventListener("click", async () => {
+  setMsg("msg-otp", "");
+  try {
+    await sendCode();
+    setMsg("msg-otp", "A new code has been sent.", true);
+  } catch (err) {
+    setMsg("msg-otp", err.message);
+  }
+});
+
+$("change-btn").addEventListener("click", () => {
+  setMsg("msg-contact", "");
+  show("step-contact");
+  $("contact").focus();
+});
+
+$("step-otp").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setMsg("msg-otp", "");
+  $("verify-btn").disabled = true;
+  try {
+    const data = await post("/api/auth/verify-otp", { contact, code: $("code").value });
+    localStorage.setItem("cc_token", data.token);
+    showLoggedIn(data.user);
+  } catch (err) {
+    setMsg("msg-otp", err.message);
+  } finally {
+    $("verify-btn").disabled = false;
+  }
+});
+
+$("logout-btn").addEventListener("click", () => {
+  localStorage.removeItem("cc_token");
+  $("contact").value = "";
+  show("step-contact");
+});
+
+(async () => {
+  const token = localStorage.getItem("cc_token");
+  if (!token) return;
+  const res = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
+  if (res.ok) showLoggedIn(await res.json());
+  else localStorage.removeItem("cc_token");
+})();
+</script>
+</body>
+</html>
+

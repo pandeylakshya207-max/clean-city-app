@@ -1,0 +1,10 @@
+fastapi==0.142.4
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+pyjwt==2.15.1
+pillow==12.3.0
+httpx==0.28.1
+python-dotenv==1.2.4
+numpy==2.5.3
+torch==2.14.1
+transformers==5.19.0

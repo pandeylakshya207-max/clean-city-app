@@ -68,6 +68,24 @@ def health():
     }
 
 
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/.well-known/assetlinks.json")
+def asset_links():
+    path = STATIC_DIR / "assetlinks.json"
+    if not path.exists():
+        raise HTTPException(404, "Not set up yet.")
+    return FileResponse(path, media_type="application/json")
+
+
 def page(name):
     path = STATIC_DIR / name
     if not path.exists():
@@ -88,3 +106,4 @@ def report_page():
 @app.get("/dashboard")
 def dashboard_page():
     return page("dashboard.html")
+

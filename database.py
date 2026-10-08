@@ -20,6 +20,7 @@ EXTRA_COMPLAINT_COLUMNS = {
 }
 
 SQLITE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS photos (name TEXT PRIMARY KEY, data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     contact TEXT UNIQUE NOT NULL,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS complaints (
 """
 
 POSTGRES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS photos (name TEXT PRIMARY KEY, data BYTEA NOT NULL, created_at TEXT NOT NULL DEFAULT (now()::text));
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     contact TEXT UNIQUE NOT NULL,
@@ -211,3 +213,4 @@ if __name__ == "__main__":
             print("  (none yet)")
     else:
         print("Database ready.")
+

@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -25,7 +25,7 @@ except Exception as exc:
 
 app = FastAPI(title="Clean City")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-if not storage.USE_BLOB:
+if storage.MODE == "local":
     storage.UPLOAD_DIR.mkdir(exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=storage.UPLOAD_DIR), name="uploads")
 app.include_router(complaints.router)
@@ -62,7 +62,7 @@ def health():
     return {
         "database": "postgres" if USE_POSTGRES else "sqlite",
         "database_error": DATABASE_ERROR,
-        "photo_storage": "vercel-blob" if storage.USE_BLOB else "local-folder",
+        "photo_storage": storage.MODE,
         "email_configured": bool(os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD")),
         "model_files_mb": checks.models_status(),
     }
@@ -86,6 +86,18 @@ def asset_links():
     return FileResponse(path, media_type="application/json")
 
 
+@app.get("/photos/{name}")
+def photo(name: str):
+    data = storage.load_from_database(name)
+    if data is None:
+        raise HTTPException(404, "Photo not found.")
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 def page(name):
     path = STATIC_DIR / name
     if not path.exists():
@@ -106,4 +118,5 @@ def report_page():
 @app.get("/dashboard")
 def dashboard_page():
     return page("dashboard.html")
+
 

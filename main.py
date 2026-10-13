@@ -10,6 +10,7 @@ import auth
 import checks
 import complaints
 import staff
+import hotspots
 import storage
 from database import USE_POSTGRES, init_db, set_role
 
@@ -45,6 +46,7 @@ if storage.MODE == "local":
     app.mount("/uploads", StaticFiles(directory=storage.UPLOAD_DIR), name="uploads")
 app.include_router(complaints.router)
 app.include_router(staff.router)
+app.include_router(hotspots.router)
 
 
 class OtpRequest(BaseModel):
@@ -130,9 +132,15 @@ def report_page():
     return page("report.html")
 
 
+@app.get("/hotspots")
+def hotspots_page():
+    return page("hotspots.html")
+
+
 @app.get("/dashboard")
 def dashboard_page():
     return page("dashboard.html")
+
 
 
 

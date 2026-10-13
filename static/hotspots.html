@@ -1,0 +1,338 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon-192.png">
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
+<title>Clean City - Garbage hotspots</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: #eef3ef; color: #17231c;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: #14532d; color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  header .name { font-weight: 700; font-size: 17px; }
+  header .who { font-size: 12px; opacity: 0.85; overflow-wrap: anywhere; }
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .nav a, .nav button {
+    padding: 8px 12px; font-size: 14px; font-weight: 600; border: 0; border-radius: 8px;
+    background: rgba(255, 255, 255, 0.18); color: #fff; cursor: pointer; text-decoration: none;
+    font-family: inherit;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .bar label { font-size: 14px; font-weight: 600; }
+  .bar select {
+    padding: 8px 10px; font-size: 14px; border: 1.5px solid #cfd8d2; border-radius: 8px;
+    background: #fff; color: inherit; font-family: inherit;
+  }
+  .summary { font-size: 14px; color: #55645b; }
+  .card {
+    background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px;
+    box-shadow: 0 2px 12px rgba(23, 35, 28, 0.07);
+  }
+  #map { height: 420px; border-radius: 10px; background: #e3ebe5; display: flex; align-items: center; justify-content: center; color: #55645b; font-size: 14px; }
+  @media (max-width: 640px) { #map { height: 320px; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 13px; color: #55645b; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  h2 { font-size: 17px; margin: 18px 0 10px; }
+  .spot-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rank {
+    width: 30px; height: 30px; border-radius: 50%; background: #14532d; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none;
+  }
+  .spot-name { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+  .line { font-size: 14px; color: #33413a; margin-top: 7px; line-height: 1.45; }
+  .line.warn { color: #8c1d18; font-weight: 600; }
+  .line.tip { color: #14532d; }
+  .meta { font-size: 12px; color: #6b7a71; margin-top: 8px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .actions button, .actions a {
+    padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer;
+    border: 1.5px solid #1f7a4d; background: #fff; color: #1f7a4d; text-decoration: none; font-family: inherit;
+  }
+  .empty { color: #55645b; padding: 18px 0; text-align: center; font-size: 14px; }
+  .how { font-size: 13px; color: #55645b; line-height: 1.5; }
+  .how ul { margin: 6px 0 0; padding-left: 18px; }
+  .popup-name { font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="name">Clean City - Garbage hotspots</div>
+    <div class="who" id="who"></div>
+  </div>
+  <div class="nav">
+    <a href="/dashboard">Dashboard</a>
+    <button id="logout-btn" type="button">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="bar">
+    <label for="period">Period</label>
+    <select id="period">
+      <option value="30">Last 30 days</option>
+      <option value="90" selected>Last 90 days</option>
+      <option value="365">Last 12 months</option>
+    </select>
+    <span class="summary" id="summary">Finding hotspots...</span>
+  </div>
+
+  <section class="card">
+    <div id="map">Loading map...</div>
+    <div class="legend">
+      <span><span class="dot" style="background:#b3261e"></span>High: keeps coming back</span>
+      <span><span class="dot" style="background:#d97706"></span>Medium</span>
+      <span><span class="dot" style="background:#ca8a04"></span>Low</span>
+      <span>Brighter colour on the heat map = more recent and repeated reports</span>
+    </div>
+  </section>
+
+  <h2>Hotspots, worst first</h2>
+  <div id="list"><div class="empty">Loading...</div></div>
+
+  <section class="card how">
+    <strong>How hotspots are found</strong>
+    <ul>
+      <li>Reports within 200 metres of each other are grouped. A place needs at least 3 reports to become a hotspot.</li>
+      <li>Recent reports count more: a report loses half its weight every 30 days.</li>
+      <li>A report that comes in after the spot was already cleaned counts double, because it shows people are dumping there again and again.</li>
+      <li>The expected next dumping date is the last cleaning plus the average time garbage took to come back. It is an estimate.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const token = localStorage.getItem("cc_token");
+const LEVELS = {
+  high: { label: "High", color: "#b3261e" },
+  medium: { label: "Medium", color: "#d97706" },
+  low: { label: "Low", color: "#ca8a04" },
+};
+let map = null;
+let heatLayer = null;
+let circleLayer = null;
+let circles = {};
+
+function logout() {
+  localStorage.removeItem("cc_token");
+  window.location.href = "/";
+}
+
+async function api(path) {
+  const res = await fetch(path, { headers: { Authorization: "Bearer " + token } });
+  if (res.status === 401) {
+    logout();
+    throw new Error("Please log in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
+  }
+  return data;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function shortDate(iso) {
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function plural(n, one, many) {
+  return n + " " + (n === 1 ? one : many);
+}
+
+function comesBack(daysValue) {
+  if (daysValue < 1) return "within a day";
+  const d = Math.round(daysValue);
+  return plural(d, "day", "days") + " later";
+}
+
+function initMap() {
+  if (typeof L === "undefined") {
+    $("map").textContent = "The map could not load. Check the internet connection and reload the page.";
+    return false;
+  }
+  $("map").textContent = "";
+  map = L.map("map").setView([12.9716, 77.5946], 11);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(map);
+  circleLayer = L.layerGroup().addTo(map);
+  return true;
+}
+
+function describe(h) {
+  const lines = [];
+  lines.push({
+    text: plural(h.reports, "report", "reports") + " in this period (" + h.recent_reports +
+      " in the last 30 days), from " + plural(h.people, "person", "different people") + ".",
+  });
+  if (h.open_reports) {
+    lines.push({ text: plural(h.open_reports, "report is", "reports are") + " still waiting to be cleaned." });
+  }
+  if (h.repeats) {
+    lines.push({
+      text: "Garbage came back " + plural(h.repeats, "time", "times") + " after cleaning" +
+        (h.avg_return_days !== null ? ", on average " + comesBack(h.avg_return_days) : "") + ".",
+    });
+  }
+  if (h.next_expected) {
+    if (new Date(h.next_expected) <= new Date()) {
+      lines.push({ text: "Due again: garbage usually returns by now. Check this spot.", cls: "warn" });
+    } else {
+      lines.push({ text: "Expected to be dumped again around " + shortDate(h.next_expected) + " (estimate)." });
+    }
+  }
+  const tips = {
+    high: "Suggested action: put up a dustbin and a no-dumping sign, and consider a camera or fines here.",
+    medium: "Suggested action: add this spot to the regular cleaning round.",
+    low: "Suggested action: keep an eye on it.",
+  };
+  lines.push({ text: tips[h.level], cls: "tip" });
+  return lines;
+}
+
+function popupContent(h) {
+  const box = el("div");
+  box.appendChild(el("div", "popup-name", "#" + h.rank + " " + h.name));
+  box.appendChild(el("div", "", LEVELS[h.level].label + " | " + plural(h.reports, "report", "reports") +
+    (h.repeats ? " | came back " + plural(h.repeats, "time", "times") : "")));
+  return box;
+}
+
+function renderMap(data) {
+  if (!map) return;
+  if (heatLayer) map.removeLayer(heatLayer);
+  heatLayer = null;
+  circleLayer.clearLayers();
+  circles = {};
+  if (L.heatLayer && data.heat.length) {
+    heatLayer = L.heatLayer(data.heat, {
+      radius: 28, blur: 22, maxZoom: 16, minOpacity: 0.35,
+      gradient: { 0.3: "#facc15", 0.6: "#f97316", 1.0: "#b91c1c" },
+    }).addTo(map);
+  }
+  for (const h of data.hotspots) {
+    const color = LEVELS[h.level].color;
+    const circle = L.circle([h.latitude, h.longitude], {
+      radius: h.radius_m + 60, color: color, weight: 2, fillColor: color, fillOpacity: 0.08,
+    }).bindPopup(popupContent(h));
+    circle.addTo(circleLayer);
+    circles[h.rank] = circle;
+  }
+  if (data.heat.length) {
+    map.fitBounds(L.latLngBounds(data.heat.map((p) => [p[0], p[1]])), { padding: [30, 30], maxZoom: 15 });
+  }
+  map.invalidateSize();
+}
+
+function showOnMap(h) {
+  if (!map) return;
+  map.setView([h.latitude, h.longitude], 16);
+  if (circles[h.rank]) circles[h.rank].openPopup();
+  $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderCard(h) {
+  const card = el("div", "card");
+  const head = el("div", "spot-head");
+  head.appendChild(el("div", "rank", String(h.rank)));
+  head.appendChild(el("div", "spot-name", h.name));
+  const badge = el("span", "badge", LEVELS[h.level].label);
+  badge.style.background = LEVELS[h.level].color;
+  head.appendChild(badge);
+  card.appendChild(head);
+
+  for (const line of describe(h)) {
+    card.appendChild(el("div", "line" + (line.cls ? " " + line.cls : ""), line.text));
+  }
+  card.appendChild(el("div", "meta",
+    "Score " + h.score + " | first report " + shortDate(h.first_report) + ", latest " + shortDate(h.last_report) +
+    " | report numbers: " + h.report_ids.map((id) => "#" + id).join(", ")));
+
+  const actions = el("div", "actions");
+  const show = el("button", "", "Show on map");
+  show.type = "button";
+  show.addEventListener("click", () => showOnMap(h));
+  actions.appendChild(show);
+  const gmaps = el("a", "", "Open in Google Maps");
+  gmaps.href = "https://www.google.com/maps?q=" + h.latitude + "," + h.longitude;
+  gmaps.target = "_blank";
+  gmaps.rel = "noopener";
+  actions.appendChild(gmaps);
+  card.appendChild(actions);
+  return card;
+}
+
+async function load() {
+  const days = $("period").value;
+  $("summary").textContent = "Finding hotspots...";
+  const list = $("list");
+  try {
+    const data = await api("/api/staff/hotspots?days=" + days);
+    const n = data.hotspots.length;
+    $("summary").textContent = plural(data.total_reports, "report", "reports") + " in this period, " +
+      plural(n, "hotspot", "hotspots") + " found.";
+    renderMap(data);
+    list.replaceChildren();
+    if (!n) {
+      list.appendChild(el("div", "empty",
+        "No hotspots in this period. A hotspot needs at least 3 reports within 200 metres of each other."));
+      return;
+    }
+    for (const h of data.hotspots) list.appendChild(renderCard(h));
+  } catch (err) {
+    $("summary").textContent = "";
+    list.replaceChildren(el("div", "empty", err.message));
+  }
+}
+
+$("logout-btn").addEventListener("click", logout);
+$("period").addEventListener("change", load);
+
+(async () => {
+  if (!token) {
+    logout();
+    return;
+  }
+  let user;
+  try {
+    user = await api("/api/me");
+  } catch (err) {
+    return;
+  }
+  $("who").textContent = user.contact;
+  if (user.role !== "staff") {
+    $("summary").textContent = "";
+    $("list").replaceChildren(el("div", "empty", "This page is only for municipal staff."));
+    $("map").textContent = "";
+    return;
+  }
+  initMap();
+  load();
+})();
+</script>
+</body>
+</html>

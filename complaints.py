@@ -16,6 +16,7 @@ MIN_SIDE_PIXELS = 400
 MAX_SIDE_PIXELS = 1600
 DAILY_LIMIT = 50
 SAME_SPOT_METRES = 300
+MAX_PIN_MOVE_METRES = 250
 OPEN_STATUSES = "('pending', 'assigned')"
 
 router = APIRouter(prefix="/api/complaints")
@@ -105,10 +106,15 @@ def create_complaint(
     latitude: float = Form(...),
     longitude: float = Form(...),
     description: str = Form(""),
+    gps_latitude: float | None = Form(None),
+    gps_longitude: float | None = Form(None),
     user=Depends(auth.get_current_user),
 ):
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         raise HTTPException(400, "The location is not valid. Please turn on GPS and try again.")
+    if gps_latitude is not None and gps_longitude is not None:
+        if distance_metres(gps_latitude, gps_longitude, latitude, longitude) > MAX_PIN_MOVE_METRES:
+            raise HTTPException(400, "The pin is too far from your GPS position. Move it within 200 m and try again.")
     img = load_photo(photo.file.read())
 
     conn = get_db()
@@ -184,3 +190,4 @@ def my_complaints(user=Depends(auth.get_current_user)):
     finally:
         conn.close()
     return [to_dict(r) for r in rows]
+

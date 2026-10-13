@@ -8,6 +8,7 @@
 <link rel="icon" href="/static/icon-192.png">
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
 <title>Clean City - Report garbage</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -47,6 +48,14 @@
   }
   textarea:focus { outline: none; border-color: #1f7a4d; }
   .loc { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #f1f6f2; font-size: 14px; }
+  .pin-title { font-size: 14px; font-weight: 600; margin: 14px 0 4px; }
+  .pin-help { font-size: 13px; color: #55645b; margin-bottom: 8px; line-height: 1.4; }
+  .pin-help.warn { color: #b3261e; }
+  #pin-map { height: 240px; border-radius: 12px; background: #e3ebe5; }
+  .blue-pin {
+    width: 22px; height: 22px; border-radius: 50%; background: #2563eb;
+    border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35), 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
   .msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: #b3261e; }
   .msg.ok { color: #1f7a4d; }
   .item { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ece8; }
@@ -92,6 +101,9 @@
 
     <div id="step-review" hidden>
       <img id="preview" class="preview" alt="Photo you just took">
+      <div class="pin-title">Is the blue pin on the garbage?</div>
+      <div id="pin-help" class="pin-help">If not, drag the blue pin (or tap the map) to the exact spot. You can move it up to 200 m from your GPS position.</div>
+      <div id="pin-map"></div>
       <label for="description">Add a note (optional)</label>
       <textarea id="description" maxlength="500" placeholder="For example: near the bus stop, piled up for 3 days"></textarea>
       <button id="submit-btn" type="button">Submit report</button>
@@ -108,9 +120,11 @@
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const token = localStorage.getItem("cc_token");
+const MAX_MOVE_METRES = 200;
 const STATUS_LABELS = {
   pending: "Received",
   assigned: "Team assigned",
@@ -122,7 +136,12 @@ let stream = null;
 let photoBlob = null;
 let previewUrl = null;
 let position = null;
+let chosen = null;
 let watchId = null;
+let pinMap = null;
+let pin = null;
+let accuracyCircle = null;
+let pinCentred = false;
 
 function logout() {
   localStorage.removeItem("cc_token");
@@ -155,6 +174,19 @@ async function api(path, options) {
   return data;
 }
 
+function distanceMetres(a, b) {
+  const rad = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * rad;
+  const dLon = (b.longitude - a.longitude) * rad;
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function reportLocation() {
+  return chosen || position;
+}
+
 function showLocation() {
   const box = $("loc");
   box.hidden = false;
@@ -162,8 +194,75 @@ function showLocation() {
     box.textContent = "Finding your location...";
     return;
   }
-  box.textContent = "Location: " + position.latitude.toFixed(5) + ", " + position.longitude.toFixed(5) +
-    " (accurate to about " + Math.round(position.accuracy) + " m)";
+  const where = reportLocation();
+  const coords = where.latitude.toFixed(5) + ", " + where.longitude.toFixed(5);
+  if (chosen) {
+    box.textContent = "Location: " + coords + " (pin moved " +
+      Math.round(distanceMetres(position, chosen)) + " m from your GPS position)";
+  } else {
+    box.textContent = "Location: " + coords + " (accurate to about " + Math.round(position.accuracy) + " m)";
+  }
+}
+
+function setPinHelp(text, warn) {
+  $("pin-help").textContent = text;
+  $("pin-help").className = "pin-help" + (warn ? " warn" : "");
+}
+
+function ensurePinMap() {
+  if (pinMap) return true;
+  if (typeof L === "undefined") {
+    $("pin-map").hidden = true;
+    setPinHelp("The map could not load, so your GPS position will be used.", true);
+    return false;
+  }
+  pinMap = L.map("pin-map").setView([12.9716, 77.5946], 12);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(pinMap);
+  accuracyCircle = L.circle([12.9716, 77.5946], {
+    radius: 50, color: "#2563eb", weight: 1, fillColor: "#2563eb", fillOpacity: 0.1,
+  }).addTo(pinMap);
+  const icon = L.divIcon({ className: "", html: '<div class="blue-pin"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  pin = L.marker([12.9716, 77.5946], { draggable: true, autoPan: true, icon: icon, title: "Garbage location" }).addTo(pinMap);
+  pin.on("dragend", () => movePin(pin.getLatLng()));
+  pinMap.on("click", (event) => movePin(event.latlng));
+  return true;
+}
+
+function movePin(latlng) {
+  if (!position) return;
+  const target = { latitude: latlng.lat, longitude: latlng.lng };
+  const moved = distanceMetres(position, target);
+  if (moved > MAX_MOVE_METRES) {
+    const back = reportLocation();
+    pin.setLatLng([back.latitude, back.longitude]);
+    setPinHelp("That is too far. You can move the pin up to 200 m from your GPS position.", true);
+    return;
+  }
+  chosen = moved < 3 ? null : target;
+  pin.setLatLng([target.latitude, target.longitude]);
+  setPinHelp("Pin set. Drag it again if it is not exactly on the garbage.", false);
+  showLocation();
+}
+
+function syncPin() {
+  if (!pinMap || !position) return;
+  accuracyCircle.setLatLng([position.latitude, position.longitude]);
+  accuracyCircle.setRadius(Math.min(Math.max(position.accuracy, 10), 500));
+  const where = reportLocation();
+  pin.setLatLng([where.latitude, where.longitude]);
+  if (!pinCentred) {
+    pinMap.setView([where.latitude, where.longitude], 17);
+    pinCentred = true;
+  }
+}
+
+function showPinMap() {
+  if (!ensurePinMap()) return;
+  pinMap.invalidateSize();
+  syncPin();
 }
 
 function startLocation() {
@@ -180,7 +279,9 @@ function startLocation() {
         longitude: pos.coords.longitude,
         accuracy: pos.coords.accuracy,
       };
+      if (chosen && distanceMetres(position, chosen) > MAX_MOVE_METRES) chosen = null;
       showLocation();
+      syncPin();
     },
     (err) => {
       if (err.code === err.PERMISSION_DENIED) {
@@ -238,14 +339,18 @@ function takePhoto() {
     $("preview").src = previewUrl;
     stopCamera();
     show("step-review");
+    setTimeout(showPinMap, 50);
   }, "image/jpeg", 0.9);
 }
 
 function reset() {
   stopCamera();
   photoBlob = null;
+  chosen = null;
+  pinCentred = false;
   $("description").value = "";
   $("loc").hidden = true;
+  setPinHelp("If not, drag the blue pin (or tap the map) to the exact spot. You can move it up to 200 m from your GPS position.", false);
   show("step-start");
 }
 
@@ -260,10 +365,13 @@ async function submitReport() {
   btn.disabled = true;
   btn.textContent = "Sending...";
   try {
+    const where = reportLocation();
     const form = new FormData();
     form.append("photo", photoBlob, "photo.jpg");
-    form.append("latitude", position.latitude);
-    form.append("longitude", position.longitude);
+    form.append("latitude", where.latitude);
+    form.append("longitude", where.longitude);
+    form.append("gps_latitude", position.latitude);
+    form.append("gps_longitude", position.longitude);
     form.append("description", $("description").value);
     const saved = await api("/api/complaints", { method: "POST", body: form });
     reset();
@@ -367,5 +475,3 @@ $("logout-btn").addEventListener("click", logout);
 </script>
 </body>
 </html>
-
-

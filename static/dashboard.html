@@ -63,6 +63,20 @@
   .act-msg { font-size: 13px; color: var(--red); min-height: 0; }
   .act-msg:empty { display: none; }
   .filter-note { display: flex; align-items: center; gap: 10px; margin: 18px 2px 12px; }
+  .gchip.type { background: var(--lime); color: var(--ink); }
+  .gchip.late { background: var(--red); color: #fff; }
+  .due { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; padding: 9px 12px; border-radius: 12px; background: var(--mist); color: var(--ink-2); }
+  .due svg { width: 16px; height: 16px; flex: none; }
+  .due.soon { background: var(--amber-bg); color: var(--amber); }
+  .due.late { background: var(--red-bg); color: var(--red); }
+  .verify { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; padding: 10px 12px; border-radius: 12px; }
+  .verify svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+  .verify.ok { background: var(--green-bg); color: var(--green); }
+  .verify.bad { background: var(--red-bg); color: var(--red); font-weight: 600; }
+  .verify.none { background: var(--mist); color: var(--stone); }
+  .suggest { font-size: 12.5px; color: var(--stone); margin-top: -4px; }
+  .suggest button { background: none; border: 0; padding: 0; color: var(--leaf); font-weight: 700; font-size: 12.5px; }
+  #type-filters { margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -106,13 +120,14 @@
     <h2 id="list-title">All reports</h2>
     <button class="link-btn" id="show-all" type="button" hidden>Show all</button>
   </div>
+  <div class="chips" id="type-filters" role="group" aria-label="Filter by garbage type" hidden></div>
   <div id="list" class="grid"><div class="skeleton"></div><div class="skeleton"></div></div>
 </div>
 
 <nav class="nav" aria-label="Main">
   <a href="/dashboard" class="on" aria-label="Dashboard" data-icon="list"></a>
   <a href="/hotspots" class="main" aria-label="Hotspot map" data-icon="map"></a>
-  <button type="button" id="nav-refresh" aria-label="Refresh reports" data-icon="refresh"></button>
+  <a href="/city" aria-label="City scoreboard" data-icon="city"></a>
 </nav>
 
 <script src="/static/shrink.js"></script>
@@ -123,6 +138,23 @@ const el = CC.el;
 CC.fillIcons();
 const TITLES = { "": "All reports", pending: "Waiting for a team", assigned: "Team assigned", cleaned: "Cleaned", rejected: "Rejected" };
 let currentStatus = "";
+let typeFilter = "";
+let allComplaints = [];
+
+function staffPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+}
+
+function distanceText(m) {
+  return m >= 1000 ? (m / 1000).toFixed(1) + " km" : Math.round(m) + " m";
+}
 
 function percent(value) {
   return value === null || value === undefined ? "not checked" : Math.round(value * 100) + "%";
@@ -178,6 +210,14 @@ function renderActions(c) {
   assignRow.appendChild(team);
   assignRow.appendChild(assignBtn);
   box.appendChild(assignRow);
+  if (c.garbage_type && c.status === "pending") {
+    const hint = el("div", "suggest", "Suggested for " + c.garbage_type.name.toLowerCase() + ": ");
+    const use = el("button", "", c.garbage_type.team);
+    use.type = "button";
+    use.addEventListener("click", () => { team.value = c.garbage_type.team; team.focus(); });
+    hint.appendChild(use);
+    box.appendChild(hint);
+  }
 
   const cleanRow = el("div", "act-row");
   const label = el("label", "upload");
@@ -207,10 +247,16 @@ function renderActions(c) {
   cleanBtn.addEventListener("click", () => run(cleanBtn, async () => {
     if (!file.files.length) throw new Error("First take or choose the photo of the cleaned spot.");
     const small = await shrinkPhoto(file.files[0]);
+    cleanBtn.textContent = "Checking...";
+    const here = await staffPosition();
     const send = (confirmed) => {
       const form = new FormData();
       form.append("photo", small, "after.jpg");
       form.append("confirm", confirmed ? "true" : "false");
+      if (here) {
+        form.append("latitude", here.latitude);
+        form.append("longitude", here.longitude);
+      }
       return CC.api(base + "/clean", { method: "POST", body: form });
     };
     try {
@@ -220,6 +266,8 @@ function renderActions(c) {
       const ok = window.confirm("This photo still seems to show garbage. Mark the report as cleaned anyway?");
       if (!ok) throw new Error("Not uploaded. Take a photo of the cleaned spot and try again.");
       await send(true);
+    } finally {
+      cleanBtn.textContent = "Mark cleaned";
     }
   }, "Report #" + c.id + " marked cleaned. The reporter has been told."));
   cleanRow.appendChild(label);
@@ -293,6 +341,7 @@ function renderCard(c) {
     a.appendChild(img);
     photo.appendChild(a);
     const bl = el("div", "bl");
+    if (c.garbage_type) bl.appendChild(el("span", "gchip type", c.garbage_type.name));
     bl.appendChild(el("span", "gchip glass", "Garbage " + percent(c.garbage_score)));
     bl.appendChild(el("span", "gchip glass", "AI-generated " + percent(c.fake_score)));
     if (c.possible_fake) bl.appendChild(el("span", "gchip fake", "Possible fake, check first"));
@@ -302,7 +351,12 @@ function renderCard(c) {
 
   const head = el("div", "r-top");
   head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px";
-  head.appendChild(el("span", "gchip id", "#" + c.id));
+  const idBox = el("span");
+  idBox.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+  idBox.appendChild(el("span", "gchip id", "#" + c.id));
+  if (c.escalated && (c.status === "pending" || c.status === "assigned")) idBox.appendChild(el("span", "gchip late", "Escalated"));
+  if (c.reopened) idBox.appendChild(el("span", "badge warn", "Reopened"));
+  head.appendChild(idBox);
   head.appendChild(CC.badge(c.status));
   body.appendChild(head);
   body.appendChild(el("div", "addr", c.address || "Address not found"));
@@ -316,14 +370,86 @@ function renderCard(c) {
   meta.appendChild(el("span", "", c.latitude.toFixed(5) + ", " + c.longitude.toFixed(5)));
   body.appendChild(meta);
   body.appendChild(el("div", "meta", "By " + c.reporter + ", " + CC.formatDate(c.created_at)));
+  if (c.ward) body.appendChild(el("div", "meta", "Ward " + c.ward.no + ": " + c.ward.name));
+  if ((c.status === "pending" || c.status === "assigned") && c.hours_left !== null && c.hours_left !== undefined) {
+    const due = el("div", "due" + (c.overdue ? " late" : c.hours_left < 12 ? " soon" : ""));
+    due.innerHTML = CC.icon("clock");
+    due.appendChild(el("span", "", c.overdue
+      ? "Overdue by " + CC.hoursText(c.hours_left) + (c.escalated ? ", escalated to a senior officer" : "")
+      : CC.hoursText(c.hours_left) + " left to clean (48-hour deadline)"));
+    body.appendChild(due);
+  }
   if (c.description) body.appendChild(el("div", "note", "Note: " + c.description));
   if (c.assigned_to) body.appendChild(el("div", "meta", "Team: " + c.assigned_to));
-  if (c.status === "cleaned" && c.cleaned_at) body.appendChild(el("div", "meta", "Cleaned " + CC.formatDate(c.cleaned_at)));
+  if (c.status === "cleaned" && c.cleaned_at) body.appendChild(el("div", "meta", "Cleaned " + CC.formatDate(c.cleaned_at) + (c.on_time === false ? ", after the deadline" : c.on_time ? ", on time" : "")));
+  if (c.status === "cleaned") body.appendChild(verifyLine(c));
   if (c.status === "rejected" && c.staff_note) body.appendChild(el("div", "note bad", "Rejected: " + c.staff_note));
   card.appendChild(body);
 
   if (c.status === "pending" || c.status === "assigned") card.appendChild(renderActions(c));
   return card;
+}
+
+function verifyLine(c) {
+  const parts = [];
+  if (c.after_similarity !== null && c.after_similarity !== undefined) parts.push("scene match " + Math.round(c.after_similarity * 100) + "%");
+  if (c.after_distance_m !== null && c.after_distance_m !== undefined) parts.push("photo taken " + distanceText(c.after_distance_m) + " from the spot");
+  let cls = "none";
+  let icon = "shield";
+  let text = "Not checked: this cleaning was recorded before the proof-of-clean check.";
+  if (c.clean_check === "verified") {
+    cls = "ok";
+    text = "Proof of clean: the after photo shows the same place";
+  } else if (c.clean_check === "flagged") {
+    cls = "bad";
+    icon = "alert";
+    text = "Check this cleaning: the after photo may not be of the reported place";
+  }
+  const box = el("div", "verify " + cls);
+  box.innerHTML = CC.icon(icon);
+  box.appendChild(el("span", "", text + (parts.length ? " (" + parts.join(", ") + ")." : ".")));
+  return box;
+}
+
+function renderTypeFilters() {
+  const box = $("type-filters");
+  const counts = {};
+  let overdue = 0;
+  for (const c of allComplaints) {
+    if (c.garbage_type) counts[c.garbage_type.name] = (counts[c.garbage_type.name] || 0) + 1;
+    if (c.overdue) overdue += 1;
+  }
+  const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  box.replaceChildren();
+  box.hidden = !names.length && !overdue;
+  const chip = (key, label) => {
+    const b = el("button", "chip" + (typeFilter === key ? " on" : ""), label);
+    b.type = "button";
+    b.addEventListener("click", () => { typeFilter = typeFilter === key ? "" : key; renderList(); });
+    box.appendChild(b);
+  };
+  chip("", "All types");
+  if (overdue) chip("__overdue", "Overdue (" + overdue + ")");
+  names.forEach((n) => chip(n, n + " (" + counts[n] + ")"));
+}
+
+function renderList() {
+  renderTypeFilters();
+  const list = $("list");
+  list.replaceChildren();
+  const shown = allComplaints.filter((c) =>
+    !typeFilter ? true : typeFilter === "__overdue" ? c.overdue : c.garbage_type && c.garbage_type.name === typeFilter);
+  if (!shown.length) {
+    const empty = el("div", "empty card");
+    const big = el("div", "big");
+    big.innerHTML = CC.icon("check");
+    empty.appendChild(big);
+    empty.appendChild(el("h3", "", "Nothing here"));
+    empty.appendChild(el("p", "small", currentStatus || typeFilter ? "No reports match this filter." : "New reports from citizens will appear here."));
+    list.appendChild(empty);
+    return;
+  }
+  for (const c of shown) list.appendChild(renderCard(c));
 }
 
 async function load() {
@@ -332,18 +458,9 @@ async function load() {
     const query = currentStatus ? "?status=" + currentStatus : "";
     const data = await CC.api("/api/staff/complaints" + query);
     renderCounts(data.counts);
-    list.replaceChildren();
-    if (!data.complaints.length) {
-      const empty = el("div", "empty card");
-      const big = el("div", "big");
-      big.innerHTML = CC.icon("check");
-      empty.appendChild(big);
-      empty.appendChild(el("h3", "", "Nothing here"));
-      empty.appendChild(el("p", "small", currentStatus ? "No reports with this status." : "New reports from citizens will appear here."));
-      list.appendChild(empty);
-      return;
-    }
-    for (const c of data.complaints) list.appendChild(renderCard(c));
+    allComplaints = data.complaints;
+    if (typeFilter && typeFilter !== "__overdue" && !allComplaints.some((c) => c.garbage_type && c.garbage_type.name === typeFilter)) typeFilter = "";
+    renderList();
   } catch (err) {
     list.replaceChildren(el("div", "empty card", err.message));
   }
@@ -357,7 +474,6 @@ $("stats").addEventListener("click", (e) => {
 });
 $("show-all").addEventListener("click", () => { currentStatus = ""; load(); });
 $("refresh-btn").addEventListener("click", () => { load(); CC.toast("Reports refreshed."); });
-$("nav-refresh").addEventListener("click", () => { load(); CC.toast("Reports refreshed."); });
 $("logout-btn").addEventListener("click", CC.logout);
 
 (async () => {

@@ -1,4 +1,4 @@
-﻿"""Adds or removes demo reports so the hotspot map has something to show on a laptop.
+"""Adds or removes demo reports so the hotspot map has something to show on a laptop.
 
     python demo_data.py add       add about 26 demo reports around Bengaluru
     python demo_data.py remove    delete every demo report again
@@ -14,15 +14,18 @@ from database import USE_POSTGRES, get_db, init_db
 
 DEMO_CONTACT = "demo-data@cleancity.local"
 
-# (area, latitude, longitude, how many reports, days ago of the first one, days between reports, cleaned?)
+IST = timezone(timedelta(hours=5, minutes=30))
+
+# (area, latitude, longitude, how many reports, days ago of the first one, days between reports, cleaned?,
+#  usual hour of the day (India time) when garbage is reported there)
 SCENARIOS = [
-    ("Koramangala 5th Block", 12.93520, 77.62450, 9, 58, 6, True),
-    ("Jayanagar 4th Block", 12.92500, 77.58380, 6, 45, 8, True),
-    ("BTM Layout 2nd Stage", 12.91660, 77.61010, 4, 20, 5, False),
-    ("Indiranagar 100 Feet Road", 12.97190, 77.64120, 3, 85, 3, True),
-    ("Whitefield", 12.96980, 77.75000, 1, 10, 0, False),
-    ("Malleshwaram", 13.00350, 77.57090, 1, 30, 0, True),
-    ("HSR Layout", 12.91160, 77.64730, 2, 15, 9, False),
+    ("Koramangala 5th Block", 12.93520, 77.62450, 9, 58, 6, True, 7),
+    ("Jayanagar 4th Block", 12.92500, 77.58380, 6, 45, 8, True, 21),
+    ("BTM Layout 2nd Stage", 12.91660, 77.61010, 4, 20, 5, False, 13),
+    ("Indiranagar 100 Feet Road", 12.97190, 77.64120, 3, 85, 3, True, 23),
+    ("Whitefield", 12.96980, 77.75000, 1, 10, 0, False, 10),
+    ("Malleshwaram", 13.00350, 77.57090, 1, 30, 0, True, 18),
+    ("HSR Layout", 12.91160, 77.64730, 2, 15, 9, False, 8),
 ]
 
 
@@ -55,9 +58,15 @@ def add(conn):
     rng = random.Random(42)
     now = datetime.now(timezone.utc)
     added = 0
-    for area, lat, lon, count, first_days_ago, gap_days, cleaned in SCENARIOS:
+    for area, lat, lon, count, first_days_ago, gap_days, cleaned, usual_hour in SCENARIOS:
         for n in range(count):
-            created = now - timedelta(days=first_days_ago - n * gap_days, hours=rng.randint(0, 10))
+            day = (now - timedelta(days=first_days_ago - n * gap_days)).astimezone(IST)
+            hour = (usual_hour + rng.choice([-1, 0, 0, 0, 1, 1])) % 24
+            if rng.random() < 0.15:
+                hour = rng.randint(0, 23)
+            created = day.replace(hour=hour, minute=rng.randint(0, 59)).astimezone(timezone.utc)
+            if created > now:
+                created -= timedelta(days=1)
             is_last = n == count - 1
             done = cleaned or not is_last
             cleaned_at = created + timedelta(hours=rng.randint(10, 30)) if done and gap_days else None

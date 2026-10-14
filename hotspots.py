@@ -1,4 +1,4 @@
-﻿"""Garbage hotspots: finds the places that keep getting complaints and ranks them.
+"""Garbage hotspots: finds the places that keep getting complaints and ranks them.
 
 How it works
 - Reports that lie within 200 m of each other are grouped with density-based clustering
@@ -9,6 +9,9 @@ How it works
   because it means people are dumping there again and again.
 - For every hotspot it also measures how quickly garbage comes back after a cleaning, and
   estimates when it is likely to come back next.
+- It also learns the time pattern of each hotspot: the 3-hour window of the day (India time)
+  when garbage is usually reported there, and the busiest day of the week. From that it
+  suggests a patrol or cleaning time just before the usual window.
 """
 import math
 import threading
@@ -27,6 +30,12 @@ REPEAT_WEIGHT = 2.0
 RECENT_DAYS = 30
 MAX_NAME_LOOKUPS = 8
 EARTH_METRES = 6371000
+IST = timezone(timedelta(hours=5, minutes=30))
+PEAK_HOURS = 3
+MIN_TIMING_REPORTS = 4
+MIN_PEAK_SHARE = 0.4
+MIN_DAY_SHARE = 0.3
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 router = APIRouter(prefix="/api/staff")
 _name_lock = threading.Lock()
@@ -107,6 +116,45 @@ def cluster(points, radius=RADIUS_METRES, min_points=MIN_REPORTS):
     return list(groups.values())
 
 
+def timing(items):
+    """When garbage shows up at a place: hour-of-day counts, the busiest 3-hour window and busiest day.
+
+    The report time stands in for the dumping time: garbage is dumped some time before somebody
+    photographs it, so the patrol is suggested one hour before the usual window starts.
+    """
+    hours = [0] * 24
+    days = [0] * 7
+    for r in items:
+        t = r["created"].astimezone(IST)
+        hours[t.hour] += 1
+        days[t.weekday()] += 1
+    total = len(items)
+    result = {"hours": hours, "days": days, "peak_start": None, "peak_end": None,
+              "peak_share": None, "busy_day": None, "patrol_hour": None}
+    if total < MIN_TIMING_REPORTS:
+        return result
+    best_start, best = 0, -1
+    for start in range(24):
+        count = sum(hours[(start + k) % 24] for k in range(PEAK_HOURS))
+        if count > best:
+            best_start, best = start, count
+    share = best / total
+    if share >= MIN_PEAK_SHARE:
+        result["peak_start"] = best_start
+        result["peak_end"] = (best_start + PEAK_HOURS) % 24
+        result["peak_share"] = round(share, 2)
+        result["patrol_hour"] = (best_start - 1) % 24
+    top_day = max(range(7), key=lambda d: days[d])
+    if days[top_day] >= 2 and days[top_day] / total >= MIN_DAY_SHARE:
+        result["busy_day"] = DAY_NAMES[top_day]
+    return result
+
+
+def hour_label(hour):
+    suffix = "am" if hour < 12 else "pm"
+    return f"{hour % 12 or 12} {suffix}"
+
+
 def level_for(score, repeats):
     if score >= 6 or repeats >= 3:
         return "high"
@@ -170,6 +218,7 @@ def analyse(reports, now, window_days):
             "report_ids": [r["id"] for r in reversed(items)][:20],
             "sample_address": items[-1]["address"],
             "name": None,
+            "timing": timing(items),
         })
     hotspots.sort(key=lambda h: h["score"], reverse=True)
     for rank, h in enumerate(hotspots, start=1):
@@ -177,7 +226,8 @@ def analyse(reports, now, window_days):
 
     top = max((r["weight"] for r in reports), default=1.0)
     heat = [[round(r["lat"], 6), round(r["lon"], 6), round(r["weight"] / top, 3)] for r in reports]
-    return {"window_days": window_days, "total_reports": len(reports), "heat": heat, "hotspots": hotspots}
+    return {"window_days": window_days, "total_reports": len(reports), "heat": heat,
+            "city_timing": timing(reports), "hotspots": hotspots}
 
 
 def _ensure_name_table(conn):
@@ -288,3 +338,10 @@ if __name__ == "__main__":
             f"  #{h['rank']} {h['name']} [{h['level'].upper()}] score {h['score']}: "
             f"{h['reports']} reports from {h['people']} people, {h['repeats']} after cleaning{back}"
         )
+        t = h["timing"]
+        if t["peak_start"] is not None:
+            day = f", mostly on {t['busy_day']}s" if t["busy_day"] else ""
+            print(
+                f"      usually reported {hour_label(t['peak_start'])} to {hour_label(t['peak_end'])}"
+                f" ({round(t['peak_share'] * 100)}% of reports){day}; patrol at {hour_label(t['patrol_hour'])}"
+            )

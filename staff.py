@@ -1,4 +1,4 @@
-﻿import os
+import os
 import smtplib
 from email.message import EmailMessage
 
@@ -7,11 +7,15 @@ from pydantic import BaseModel
 
 import auth
 import checks
+import sla
 import storage
-from complaints import load_photo
+import wards
+from complaints import distance_metres, load_photo, type_of
 from database import get_db
 
 FAKE_FLAG_SCORE = 0.50
+# The staff phone's GPS must be this close to the reported spot when the after photo is taken.
+MAX_CLEAN_DISTANCE_METRES = 150
 OPEN = ("pending", "assigned")
 
 router = APIRouter(prefix="/api/staff")
@@ -44,7 +48,29 @@ def staff_dict(row):
         "possible_fake": fake is not None and fake >= FAKE_FLAG_SCORE,
         "created_at": row["created_at"],
         "cleaned_at": row["cleaned_at"],
+        "garbage_type": type_of(row),
+        "ward": wards.ward_dict(row["latitude"], row["longitude"]),
+        "escalated": row["escalated_at"] is not None,
+        "reopened": row["reopened_at"] is not None,
+        "clean_check": row["clean_check"],
+        "after_similarity": row["after_similarity"],
+        "after_distance_m": row["after_distance_m"],
+        **sla.deadline_info(row),
     }
+
+
+def clean_check(before_vec, after_vec, distance):
+    """Is the after photo really of the reported place? Returns ('verified' or 'flagged', similarity)."""
+    sim = None
+    if before_vec is not None and after_vec is not None:
+        sim = round(checks.similarity(before_vec, after_vec), 3)
+    if distance is not None and distance > MAX_CLEAN_DISTANCE_METRES:
+        return "flagged", sim
+    if sim is not None and sim < checks.SAME_PLACE_SIMILARITY:
+        return "flagged", sim
+    if sim is None and distance is None:
+        return None, sim
+    return "verified", sim
 
 
 def get_complaint(conn, complaint_id):
@@ -85,10 +111,22 @@ def notify(info, event):
         attachment = None
         if event == "cleaned":
             subject = f"Clean City: your report #{number} has been cleaned"
+            checked = ""
+            if info.get("clean_check") == "verified":
+                checked = "Our AI checked that the after photo shows the same place you reported.\n\n"
             text = (
                 f"Good news. The garbage you reported at {place} has been cleaned.\n\n"
                 "The photo taken after cleaning is attached. You can also see it in the app under My reports.\n\n"
+                + checked
+                + "If the spot is not really clean, open the report in the app and tap Not cleaned within 7 days.\n\n"
                 "Thank you for helping keep the city clean."
+            )
+        elif event == "escalated":
+            subject = f"Clean City: report #{number} has been escalated"
+            text = (
+                f"Your report #{number} at {place} was not cleaned within {sla.DEADLINE_HOURS} hours, "
+                "so it has been sent to a senior officer.\n\n"
+                "You will get a message with a photo once the spot is cleaned."
             )
         elif event == "assigned":
             subject = f"Clean City: a team is on the way for report #{number}"
@@ -114,6 +152,7 @@ def notify(info, event):
 
 @router.get("/complaints")
 def list_complaints(status: str = "", user=Depends(auth.require_staff)):
+    sla.escalate_overdue()
     conn = get_db()
     try:
         sql = "SELECT c.*, u.contact, u.contact_type FROM complaints c JOIN users u ON u.id = c.user_id"
@@ -180,6 +219,8 @@ def mark_cleaned(
     complaint_id: int,
     photo: UploadFile = File(...),
     confirm: bool = Form(False),
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
     user=Depends(auth.require_staff),
 ):
     img = load_photo(photo.file.read())
@@ -191,18 +232,25 @@ def mark_cleaned(
     finally:
         conn.close()
 
-    if not confirm:
-        score, best, _ = checks.analyze(img)
-        print(f"After-photo check: garbage score {score:.2f} | looks most like: {best}", flush=True)
-        if score >= checks.GARBAGE_THRESHOLD:
-            raise HTTPException(409, "This photo still seems to show garbage.")
+    score, best, after_vec = checks.analyze(img)
+    print(f"After-photo check: garbage score {score:.2f} | looks most like: {best}", flush=True)
+    if not confirm and score >= checks.GARBAGE_THRESHOLD:
+        raise HTTPException(409, "This photo still seems to show garbage.")
+
+    distance = None
+    if latitude is not None and longitude is not None:
+        distance = round(distance_metres(latitude, longitude, row["latitude"], row["longitude"]), 1)
+    before_vec = checks.from_bytes(row["embedding"]) if row["embedding"] is not None else None
+    verdict, sim = clean_check(before_vec, after_vec, distance)
+    print(f"After-photo check: same-place similarity {sim} | staff {distance} m away | {verdict}", flush=True)
 
     stored = storage.save_image(img)
     conn = get_db()
     try:
         conn.execute(
-            "UPDATE complaints SET status = 'cleaned', after_photo_path = ?, cleaned_at = ? WHERE id = ?",
-            (stored, auth.now_utc().isoformat(), complaint_id),
+            "UPDATE complaints SET status = 'cleaned', after_photo_path = ?, cleaned_at = ?,"
+            " clean_check = ?, after_similarity = ?, after_distance_m = ? WHERE id = ?",
+            (stored, auth.now_utc().isoformat(), verdict, sim, distance, complaint_id),
         )
         conn.commit()
         row = get_complaint(conn, complaint_id)

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef2ea">
+<meta name="description" content="Live public scoreboard of garbage reports and cleaning in every Bengaluru ward.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="/static/ui.css">
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
+<title>Clean City - Bengaluru scoreboard</title>
+<style>
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .head .brand span { font-size: 18px; }
+  .intro h1 { font-size: 32px; max-width: 18ch; }
+  .intro p { color: var(--stone); margin-top: 6px; max-width: 52ch; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--leaf); margin-top: 10px; }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 4px rgba(47, 125, 74, 0.18); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 18px 0 12px; }
+  .map-card { padding: 8px; margin-top: 12px; }
+  #map { height: 460px; border-radius: 16px; background: var(--mist); z-index: 0; display: flex; align-items: center; justify-content: center; color: var(--stone); font-size: 14px; }
+  @media (max-width: 640px) { #map { height: 360px; } .intro h1 { font-size: 27px; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 12px 8px 4px; font-size: 13px; color: var(--stone); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sq { width: 12px; height: 12px; border-radius: 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.2); }
+  .two { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .search { min-height: 44px; padding: 10px 14px; font-size: 15px; max-width: 260px; }
+  .wards { list-style: none; margin: 0; padding: 0; }
+  .ward { display: grid; grid-template-columns: 34px 44px 1fr auto; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .ward:last-child { border-bottom: 0; }
+  .ward:hover { background: #fafcf8; }
+  .ward .rk { font-family: var(--head); font-weight: 700; color: var(--stone); text-align: center; }
+  .grade { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-family: var(--head); font-weight: 800; font-size: 20px; }
+  .grade.A { background: var(--lime); color: var(--ink); }
+  .grade.B { background: var(--green-bg); color: var(--green); }
+  .grade.C { background: var(--amber-bg); color: var(--amber); }
+  .grade.D { background: var(--red-bg); color: var(--red); }
+  .grade.none { background: var(--mist); color: var(--stone-2); font-size: 14px; }
+  .ward .nm { font-weight: 700; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ward .sub { font-size: 12.5px; color: var(--stone); }
+  .ward .sc { font-family: var(--head); font-weight: 700; font-size: 20px; text-align: right; }
+  .ward .sc small { display: block; font-family: var(--body); font-size: 11.5px; color: var(--stone); font-weight: 500; }
+  .more { margin-top: 10px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .ba-card { padding: 10px; }
+  .gallery .card + .card { margin-top: 0; }
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ba figure { margin: 0; position: relative; }
+  .ba img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; display: block; background: var(--mist); }
+  .ba figcaption { position: absolute; left: 6px; bottom: 6px; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(23,33,27,0.75); color: #fff; }
+  .ba .after figcaption { background: var(--lime); color: var(--ink); }
+  .ba-meta { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 10px 4px 2px; font-size: 13px; }
+  .ba-meta b { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ok-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; color: var(--green); background: var(--green-bg); padding: 3px 8px; border-radius: 999px; flex: none; }
+  .ok-tag svg { width: 12px; height: 12px; }
+  .types .row { margin-top: 12px; }
+  .types .row:first-of-type { margin-top: 4px; }
+  .types .lab { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 600; }
+  .types .lab span { color: var(--stone); font-weight: 500; }
+  .types .tb { height: 10px; border-radius: 5px; background: var(--mist); margin-top: 5px; overflow: hidden; }
+  .types .tb i { display: block; height: 100%; border-radius: 5px; background: var(--leaf); }
+  .leaders { list-style: none; padding: 0; margin: 8px 0 0; }
+  .leaders li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .leaders li:last-child { border-bottom: 0; }
+  .leaders .pos { width: 32px; height: 32px; border-radius: 10px; background: var(--mist); display: grid; place-items: center; font-family: var(--head); font-weight: 700; flex: none; }
+  .leaders li:first-child .pos { background: var(--lime); }
+  .leaders .who { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .leaders .pts { font-family: var(--head); font-weight: 700; }
+  .side { display: grid; gap: 14px; }
+  .side .card + .card { margin-top: 0; }
+  .how ul { margin: 8px 0 0; padding-left: 18px; color: var(--stone); font-size: 13.5px; }
+  .how li + li { margin-top: 4px; }
+  .foot { font-size: 12px; color: var(--stone); margin-top: 18px; text-align: center; }
+  .popup-name { font-weight: 700; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="app wide">
+  <div class="head">
+    <div class="brand"><span data-mark></span><span>Clean City</span></div>
+    <a class="btn sm lime" href="/" id="cta">Report garbage</a>
+  </div>
+
+  <section class="intro">
+    <h1>How clean is your ward?</h1>
+    <p>Every garbage report in Bengaluru, and how fast each ward cleans it. Public, live, and the same numbers the municipal team sees.</p>
+    <div class="live" id="updated">Loading live data...</div>
+  </section>
+
+  <div class="bar">
+    <div class="seg" id="period" role="group" aria-label="Period">
+      <button type="button" data-d="30">30 days</button>
+      <button type="button" data-d="90" class="on">90 days</button>
+      <button type="button" data-d="365">12 months</button>
+    </div>
+  </div>
+
+  <div class="stats four" aria-label="City totals">
+    <div class="stat"><span class="num" id="t-reports">-</span><span class="lbl">Reports</span></div>
+    <div class="stat lime"><span class="num" id="t-cleaned">-</span><span class="lbl">Cleaned</span></div>
+    <div class="stat dark"><span class="num" id="t-ontime">-</span><span class="lbl">Cleaned within 48 h</span></div>
+    <div class="stat"><span class="num" id="t-median">-</span><span class="lbl">Typical time to clean</span></div>
+  </div>
+
+  <section class="card map-card">
+    <div id="map">Loading map...</div>
+    <div class="legend">
+      <span><span class="sq" style="background:#9ccc3d"></span>A</span>
+      <span><span class="sq" style="background:#4fae6b"></span>B</span>
+      <span><span class="sq" style="background:#e8a33a"></span>C</span>
+      <span><span class="sq" style="background:#d9533f"></span>D</span>
+      <span><span class="sq" style="background:#d6ddd3"></span>Not enough reports</span>
+      <span><span class="dot" style="background:#f59e0b"></span>Waiting to be cleaned</span>
+      <span><span class="dot" style="background:#c8392c"></span>Overdue</span>
+    </div>
+  </section>
+
+  <div class="two" style="margin-top:14px">
+    <section class="card">
+      <div class="bar" style="margin:0 0 6px">
+        <h2>Ward scorecard</h2>
+        <input class="input search" id="search" type="search" placeholder="Find your ward" aria-label="Find your ward">
+      </div>
+      <ul class="wards" id="wards"><li class="skeleton"></li></ul>
+      <button class="btn ghost sm more" id="more" type="button" hidden>Show all wards</button>
+    </section>
+    <div class="side">
+      <section class="card" id="leaderboard">
+        <h2>Top citizens this month</h2>
+        <p class="small muted" style="margin-top:4px">Green Points for verified reports and cleaned spots.</p>
+        <ol class="leaders" id="leaders"></ol>
+      </section>
+      <section class="card types">
+        <h2>What gets dumped</h2>
+        <div id="types"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Recently cleaned</h2><span class="small muted">Before and after, photos from the street</span></div>
+  <div class="gallery" id="gallery"></div>
+
+  <section class="card how" style="margin-top:16px">
+    <h3>How the scores work</h3>
+    <ul>
+      <li>Every report should be cleaned within 48 hours. If it is not, it is escalated to a senior officer automatically.</li>
+      <li>Ward score = 60% for reports cleaned within 48 hours + 40% for reports cleaned at all. A ward needs at least 3 reports in the period to get a grade: A is 85 or more, B 70, C 50, D below 50.</li>
+      <li>"Proof of clean": the AI compares the after photo with the original report photo and checks the staff phone's location, so a cleaning cannot be faked with a photo of another street.</li>
+      <li>No names, phone numbers or exact addresses are shown on this page.</li>
+    </ul>
+  </section>
+  <p class="foot" id="foot-space">Ward boundaries: BBMP 2022 delimitation, from KSRSAC via DataMeet (CC BY-SA 2.5 India). Map data &copy; OpenStreetMap contributors.</p>
+</div>
+
+<nav class="nav" id="nav-citizen" aria-label="Main" hidden>
+  <a href="/report" aria-label="Home" data-icon="home"></a>
+  <a href="/report#reports-head" aria-label="My reports" data-icon="list"></a>
+  <a href="/report#camera" class="main" aria-label="Report garbage" data-icon="camera"></a>
+  <a href="/city" class="on" aria-label="City scoreboard" data-icon="city"></a>
+  <a href="/report#gp" aria-label="My Green Points" data-icon="trophy"></a>
+</nav>
+<nav class="nav" id="nav-staff" aria-label="Main" hidden>
+  <a href="/dashboard" aria-label="Dashboard" data-icon="list"></a>
+  <a href="/hotspots" class="main" aria-label="Hotspot map" data-icon="map"></a>
+  <a href="/city" class="on" aria-label="City scoreboard" data-icon="city"></a>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="/static/ui.js"></script>
+<script>
+const $ = CC.$;
+const el = CC.el;
+CC.fillIcons();
+const GRADE_COLORS = { A: "#9ccc3d", B: "#4fae6b", C: "#e8a33a", D: "#d9533f" };
+let days = "90";
+let data = null;
+let map = null;
+let wardLayer = null;
+let dotLayer = null;
+let wardShapes = null;
+let byNo = {};
+let showAll = false;
+let layersByNo = {};
+
+async function showAppBar() {
+  if (!CC.token()) return;
+  let user = CC.cacheGet("cc_user");
+  try {
+    const res = await fetch("/api/me", { headers: { Authorization: "Bearer " + CC.token() } });
+    if (res.ok) { user = await res.json(); CC.cacheSet("cc_user", user); }
+    else if (res.status === 401) user = null;
+  } catch (err) {}
+  if (!user) return;
+  $("cta").hidden = true;
+  $(user.role === "staff" ? "nav-staff" : "nav-citizen").hidden = false;
+}
+showAppBar();
+
+function hoursLabel(h) {
+  if (h === null || h === undefined) return "-";
+  return h < 48 ? Math.round(h) + " h" : Math.round(h / 24) + " days";
+}
+
+async function getWards() {
+  if (wardShapes) return wardShapes;
+  const res = await fetch("/static/wards.geojson");
+  wardShapes = await res.json();
+  return wardShapes;
+}
+
+function wardStyle(no) {
+  const w = byNo[no];
+  const color = w && w.grade ? GRADE_COLORS[w.grade] : "#d6ddd3";
+  return { color: "#ffffff", weight: 1, fillColor: color, fillOpacity: w && w.grade ? 0.62 : 0.35 };
+}
+
+function popupFor(no, name) {
+  const w = byNo[no];
+  const box = el("div");
+  box.appendChild(el("div", "popup-name", "Ward " + no + ": " + name));
+  if (!w) {
+    box.appendChild(el("div", "", "No reports in this period."));
+  } else {
+    box.appendChild(el("div", "", w.grade ? "Grade " + w.grade + ", score " + w.score : "Not enough reports for a grade yet"));
+    box.appendChild(el("div", "", w.reports + " reports, " + w.cleaned + " cleaned, " + w.open + " open" + (w.overdue ? " (" + w.overdue + " overdue)" : "")));
+    if (w.median_hours !== null) box.appendChild(el("div", "", "Typical time to clean: " + hoursLabel(w.median_hours)));
+  }
+  return box;
+}
+
+async function renderMap() {
+  if (typeof L === "undefined") {
+    $("map").textContent = "The map could not load. Check the internet connection and reload the page.";
+    return;
+  }
+  if (!map) {
+    $("map").textContent = "";
+    map = L.map("map", { scrollWheelZoom: false }).setView([12.97, 77.59], 11);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+  }
+  const shapes = await getWards().catch(() => null);
+  if (wardLayer) wardLayer.remove();
+  if (shapes) {
+    layersByNo = {};
+    wardLayer = L.geoJSON(shapes, {
+      style: (f) => wardStyle(f.properties.no),
+      onEachFeature: (f, layer) => {
+        layersByNo[f.properties.no] = layer;
+        layer.bindPopup(() => popupFor(f.properties.no, f.properties.name));
+        layer.on("mouseover", () => layer.setStyle({ weight: 2.5, color: "#17211b" }));
+        layer.on("mouseout", () => layer.setStyle(wardStyle(f.properties.no)));
+      },
+    }).addTo(map);
+  }
+  if (dotLayer) dotLayer.remove();
+  dotLayer = L.layerGroup(data.open_points.map(([lat, lon, late]) => L.circleMarker([lat, lon], {
+    radius: 5, color: "#fff", weight: 1.5, fillColor: late ? "#c8392c" : "#f59e0b", fillOpacity: 1,
+  }))).addTo(map);
+}
+
+function focusWard(no) {
+  const layer = layersByNo[no];
+  if (!map || !layer) return;
+  map.fitBounds(layer.getBounds(), { maxZoom: 15 });
+  layer.openPopup();
+  $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderWards() {
+  const list = $("wards");
+  list.replaceChildren();
+  const q = $("search").value.trim().toLowerCase();
+  let rows = data.wards.filter((w) => !q || w.name.toLowerCase().includes(q) || String(w.no) === q);
+  const limit = q || showAll ? rows.length : 10;
+  $("more").hidden = q || showAll || rows.length <= 10;
+  if (!rows.length) {
+    list.appendChild(el("li", "small muted", q ? "No ward with reports matches \"" + q + "\"." : "No reports in this period yet."));
+    return;
+  }
+  rows.slice(0, limit).forEach((w) => {
+    const li = el("li", "ward");
+    li.tabIndex = 0;
+    li.appendChild(el("span", "rk", w.rank ? String(w.rank) : "-"));
+    li.appendChild(el("span", "grade " + (w.grade || "none"), w.grade || "new"));
+    const mid = el("div");
+    mid.style.minWidth = "0";
+    mid.appendChild(el("div", "nm", w.no ? "Ward " + w.no + ": " + w.name : w.name));
+    mid.appendChild(el("div", "sub", CC.plural(w.reports, "report", "reports") + ", " + w.cleaned + " cleaned" +
+      (w.overdue ? ", " + w.overdue + " overdue" : w.open ? ", " + w.open + " open" : "") +
+      (w.median_hours !== null ? ", typically " + hoursLabel(w.median_hours) : "")));
+    li.appendChild(mid);
+    const sc = el("div", "sc", w.score !== null ? String(w.score) : "-");
+    sc.appendChild(el("small", "", "score"));
+    li.appendChild(sc);
+    if (w.no) {
+      li.addEventListener("click", () => focusWard(w.no));
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter") focusWard(w.no); });
+    }
+    list.appendChild(li);
+  });
+}
+
+function renderLeaders() {
+  const box = $("leaders");
+  box.replaceChildren();
+  if (!data.leaderboard.length) {
+    box.appendChild(el("li", "small muted", "No points earned yet this month. Be the first!"));
+    return;
+  }
+  data.leaderboard.forEach((p) => {
+    const li = el("li");
+    li.appendChild(el("span", "pos", String(p.rank)));
+    li.appendChild(el("span", "who", p.name));
+    li.appendChild(el("span", "pts", p.points + " pts"));
+    box.appendChild(li);
+  });
+}
+
+function renderTypes() {
+  const box = $("types");
+  box.replaceChildren();
+  const total = data.types.reduce((a, t) => a + t.count, 0);
+  if (!total) {
+    box.appendChild(el("p", "small muted", "No reports in this period."));
+    return;
+  }
+  data.types.forEach((t) => {
+    const row = el("div", "row");
+    const lab = el("div", "lab", t.name);
+    lab.appendChild(el("span", "", Math.round((100 * t.count) / total) + "%"));
+    row.appendChild(lab);
+    const bar = el("div", "tb");
+    const fill = el("i");
+    fill.style.width = (100 * t.count) / data.types[0].count + "%";
+    bar.appendChild(fill);
+    row.appendChild(bar);
+    box.appendChild(row);
+  });
+}
+
+function renderGallery() {
+  const box = $("gallery");
+  box.replaceChildren();
+  if (!data.recent.length) {
+    box.appendChild(el("div", "empty card", "Cleaned spots will appear here with before and after photos."));
+    return;
+  }
+  data.recent.forEach((r) => {
+    const card = el("article", "card ba-card");
+    const ba = el("div", "ba");
+    [["before", r.photo_url, "Before"], ["after", r.after_photo_url, "After"]].forEach(([cls, url, cap]) => {
+      const f = el("figure", cls);
+      const img = el("img");
+      img.src = url;
+      img.alt = cap + " cleaning in " + r.ward;
+      img.loading = "lazy";
+      f.appendChild(img);
+      f.appendChild(el("figcaption", "", cap));
+      ba.appendChild(f);
+    });
+    card.appendChild(ba);
+    const meta = el("div", "ba-meta");
+    meta.appendChild(el("b", "", r.ward));
+    if (r.verified) {
+      const ok = el("span", "ok-tag");
+      ok.innerHTML = CC.icon("shield");
+      ok.appendChild(document.createTextNode("Verified"));
+      meta.appendChild(ok);
+    }
+    card.appendChild(meta);
+    card.appendChild(el("div", "small muted", (r.garbage_type ? r.garbage_type + ", " : "") +
+      (r.hours !== null ? "cleaned in " + hoursLabel(r.hours) : "cleaned") + " (" + CC.shortDate(r.cleaned_at) + ")"));
+    box.appendChild(card);
+  });
+}
+
+async function load() {
+  document.querySelectorAll("#period button").forEach((b) => b.classList.toggle("on", b.dataset.d === days));
+  try {
+    const res = await fetch("/api/public/stats?days=" + days);
+    if (!res.ok) throw new Error("Could not load the scoreboard. Please try again.");
+    data = await res.json();
+  } catch (err) {
+    $("updated").textContent = err instanceof TypeError ? "You are offline." : err.message;
+    return;
+  }
+  byNo = {};
+  data.wards.forEach((w) => { if (w.no) byNo[w.no] = w; });
+  const t = data.totals;
+  $("t-reports").textContent = t.reports;
+  $("t-cleaned").textContent = t.cleaned;
+  $("t-ontime").textContent = t.on_time_pct === null ? "-" : t.on_time_pct + "%";
+  $("t-median").textContent = hoursLabel(t.median_hours);
+  $("updated").textContent = "Live: updated " + new Date(data.updated_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) +
+    ", " + CC.plural(t.wards_active, "ward", "wards") + " with reports";
+  renderWards();
+  renderLeaders();
+  renderTypes();
+  renderGallery();
+  renderMap();
+}
+
+$("period").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  days = b.dataset.d;
+  load();
+});
+$("search").addEventListener("input", () => data && renderWards());
+$("more").addEventListener("click", () => { showAll = true; renderWards(); });
+load();
+</script>
+</body>
+</html>

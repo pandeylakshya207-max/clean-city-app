@@ -20,6 +20,10 @@
     alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/>',
     team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.6 3.5-5.5 6.5-5.5s5.5 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c1.8.8 3 2.6 3.5 5.4"/>',
     trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+    trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4M8.5 20h7M10 17h4v3h-4z"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.3 2.3 4.2-4.6"/>',
+    cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.4 4.4 0 0 0 7 18z"/><path d="M3 3l18 18"/>',
+    city: '<path d="M3 21h18"/><path d="M5 21V9l5-3v15M10 21V4l6 3v14M16 21v-9l3 1.5V21"/>',
     spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
   };
   const CC = {};
@@ -78,6 +82,13 @@
     t.appendChild(CC.el("span", "", text));
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 4200);
+  };
+  CC.online = () => navigator.onLine !== false;
+  CC.cacheGet = (key) => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } };
+  CC.cacheSet = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} };
+  CC.hoursText = (h) => {
+    const a = Math.abs(h);
+    return a < 1 ? Math.max(1, Math.round(a * 60)) + " min" : a < 48 ? Math.round(a) + " h" : Math.round(a / 24) + " days";
   };
   CC.STATUS = { pending: "Received", assigned: "Team assigned", cleaned: "Cleaned", rejected: "Rejected" };
   CC.badge = (status) => CC.el("span", "badge " + status, CC.STATUS[status] || status);

@@ -1,4 +1,4 @@
-﻿"""Database access. Uses hosted Postgres when DATABASE_URL is set (for example on Vercel), otherwise a local SQLite file."""
+"""Database access. Uses hosted Postgres when DATABASE_URL is set (for example on Vercel), otherwise a local SQLite file."""
 import os
 import sqlite3
 import sys
@@ -17,7 +17,37 @@ EXTRA_COMPLAINT_COLUMNS = {
     "fake_score": "REAL",
     "assigned_to": "TEXT",
     "staff_note": "TEXT",
+    "garbage_type": "TEXT",
+    "type_confidence": "REAL",
+    "after_similarity": "REAL",
+    "after_distance_m": "REAL",
+    "clean_check": "TEXT",
+    "escalated_at": "TEXT",
+    "reopened_at": "TEXT",
 }
+POSTGRES_TYPES = {"BLOB": "BYTEA", "REAL": "DOUBLE PRECISION", "TEXT": "TEXT", "INTEGER": "INTEGER"}
+
+EXTRA_TABLES_SQLITE = """
+CREATE TABLE IF NOT EXISTS penalties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    points INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT);
+"""
+
+EXTRA_TABLES_POSTGRES = """
+CREATE TABLE IF NOT EXISTS penalties (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    points INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT)
+"""
 
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS photos (name TEXT PRIMARY KEY, data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -150,11 +180,13 @@ def get_db():
 def init_db():
     conn = get_db()
     if USE_POSTGRES:
-        for statement in POSTGRES_SCHEMA.split(";"):
+        for statement in (POSTGRES_SCHEMA + ";" + EXTRA_TABLES_POSTGRES).split(";"):
             if statement.strip():
                 conn.execute(statement)
+        for name, kind in EXTRA_COMPLAINT_COLUMNS.items():
+            conn.execute(f"ALTER TABLE complaints ADD COLUMN IF NOT EXISTS {name} {POSTGRES_TYPES[kind]}")
     else:
-        conn.executescript(SQLITE_SCHEMA)
+        conn.executescript(SQLITE_SCHEMA + EXTRA_TABLES_SQLITE)
         existing = {row[1] for row in conn.execute("PRAGMA table_info(complaints)")}
         for name, kind in EXTRA_COMPLAINT_COLUMNS.items():
             if name not in existing:

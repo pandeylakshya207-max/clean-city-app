@@ -1,14 +1,19 @@
-﻿import io
+import io
 import math
 from datetime import timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import Image, ImageOps
+from pydantic import BaseModel
 
 import auth
 import checks
+import garbage_types
+import points
+import sla
 import storage
+import wards
 from database import get_db
 
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -18,6 +23,8 @@ DAILY_LIMIT = 50
 SAME_SPOT_METRES = 300
 MAX_PIN_MOVE_METRES = 250
 OPEN_STATUSES = "('pending', 'assigned')"
+OFFLINE_MAX_DAYS = 7
+REOPEN_DAYS = 7
 
 router = APIRouter(prefix="/api/complaints")
 
@@ -84,6 +91,24 @@ def fill_missing_vectors(conn):
         conn.commit()
 
 
+def type_of(row):
+    """The garbage type of a report. Older reports get it from their stored scene vector."""
+    key = row["garbage_type"]
+    confidence = row["type_confidence"]
+    if key is None and row["embedding"] is not None:
+        key, confidence = checks.garbage_type(checks.from_bytes(row["embedding"]))
+    if key is None:
+        return None
+    return dict(garbage_types.info(key), confidence=confidence)
+
+
+def can_reopen(row):
+    if row["status"] != "cleaned" or row["reopened_at"]:
+        return False
+    cleaned = sla.parse(row["cleaned_at"])
+    return cleaned is not None and auth.now_utc() - cleaned <= timedelta(days=REOPEN_DAYS)
+
+
 def to_dict(row):
     return {
         "id": row["id"],
@@ -97,7 +122,24 @@ def to_dict(row):
         "staff_note": row["staff_note"],
         "created_at": row["created_at"],
         "cleaned_at": row["cleaned_at"],
+        "garbage_type": type_of(row),
+        "ward": wards.ward_dict(row["latitude"], row["longitude"]),
+        "escalated": row["escalated_at"] is not None,
+        "clean_check": row["clean_check"],
+        "reopened": row["reopened_at"] is not None,
+        "can_reopen": can_reopen(row),
+        **sla.deadline_info(row),
     }
+
+
+def report_time(taken_at):
+    """A report saved offline keeps the time the photo was taken, if it is believable."""
+    now = auth.now_utc()
+    if taken_at:
+        t = sla.parse(taken_at)
+        if t is not None and now - timedelta(days=OFFLINE_MAX_DAYS) <= t <= now + timedelta(minutes=5):
+            return min(t, now)
+    return now
 
 
 @router.post("")
@@ -108,6 +150,7 @@ def create_complaint(
     description: str = Form(""),
     gps_latitude: float | None = Form(None),
     gps_longitude: float | None = Form(None),
+    taken_at: str = Form(""),
     user=Depends(auth.get_current_user),
 ):
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
@@ -148,6 +191,9 @@ def create_complaint(
 
     result = checks.check_photo(img, hashes, nearby)
     if not result["ok"]:
+        if result.get("duplicate"):
+            points.add_penalty(user["id"], points.DUPLICATE_POINTS, "Uploaded a photo that was already reported")
+            raise HTTPException(400, result["reason"] + f" ({points.DUPLICATE_POINTS} Green Points)")
         raise HTTPException(400, result["reason"])
 
     stored = storage.save_image(img)
@@ -156,8 +202,8 @@ def create_complaint(
     try:
         cur = conn.execute(
             "INSERT INTO complaints (user_id, photo_path, photo_hash, ai_score, fake_score, embedding,"
-            " latitude, longitude, address, description, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            " latitude, longitude, address, description, created_at, garbage_type, type_confidence)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             (
                 user["id"],
                 stored,
@@ -169,7 +215,9 @@ def create_complaint(
                 longitude,
                 address,
                 description.strip()[:500],
-                auth.now_utc().isoformat(),
+                report_time(taken_at).isoformat(),
+                result.get("garbage_type"),
+                result.get("type_confidence"),
             ),
         )
         new_id = cur.fetchone()[0]
@@ -182,6 +230,7 @@ def create_complaint(
 
 @router.get("/mine")
 def my_complaints(user=Depends(auth.get_current_user)):
+    sla.escalate_overdue()
     conn = get_db()
     try:
         rows = conn.execute(
@@ -191,3 +240,30 @@ def my_complaints(user=Depends(auth.get_current_user)):
         conn.close()
     return [to_dict(r) for r in rows]
 
+
+class ReopenBody(BaseModel):
+    reason: str = ""
+
+
+@router.post("/{complaint_id}/reopen")
+def reopen(complaint_id: int, body: ReopenBody, user=Depends(auth.get_current_user)):
+    """The citizen says the spot was not really cleaned. Allowed once, within 7 days of cleaning."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+        if row is None or row["user_id"] != user["id"]:
+            raise HTTPException(404, "Report not found.")
+        if not can_reopen(row):
+            raise HTTPException(400, f"This report can only be reopened once, within {REOPEN_DAYS} days of cleaning.")
+        reason = body.reason.strip()[:300] or "The spot is still not clean."
+        conn.execute(
+            "UPDATE complaints SET status = 'pending', reopened_at = ?, after_photo_path = NULL, cleaned_at = NULL,"
+            " clean_check = NULL, after_similarity = NULL, after_distance_m = NULL, escalated_at = NULL,"
+            " staff_note = ? WHERE id = ?",
+            (auth.now_utc().isoformat(), "Reopened by the citizen: " + reason, complaint_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+    finally:
+        conn.close()
+    return to_dict(row)

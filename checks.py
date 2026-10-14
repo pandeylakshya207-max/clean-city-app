@@ -1,10 +1,12 @@
-﻿"""Photo checks. The AI models run on ONNX Runtime, which is light enough for small servers."""
+"""Photo checks. The AI models run on ONNX Runtime, which is light enough for small servers."""
 import json
 import threading
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageStat
+
+import garbage_types
 
 MODELS = Path(__file__).parent / "models"
 MODEL_FILES = ("clip_vision.onnx", "detector.onnx", "clip_text.json", "detector.json")
@@ -13,6 +15,9 @@ GARBAGE_THRESHOLD = 0.55
 AI_THRESHOLD = 2.0  # never reached: the detector only flags photos for staff, it does not reject
 DUPLICATE_DISTANCE = 5
 SAME_SPOT_SIMILARITY = 0.90
+# An after-cleaning photo of the same place still shares the background (road, wall, trees) with the
+# report photo. Below this similarity the two photos probably show different places.
+SAME_PLACE_SIMILARITY = 0.60
 
 CLIP_MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype="float32")
 CLIP_STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype="float32")
@@ -21,6 +26,7 @@ _clip = None
 _text = None
 _detector = None
 _detector_meta = None
+_types = None
 _lock = threading.Lock()
 
 
@@ -130,6 +136,39 @@ def analyze(img):
     return score, best, vec
 
 
+def _load_types():
+    """Text vectors for the garbage types, or an empty dict if export_types.py has not been run yet."""
+    global _types
+    if _types is None:
+        path = MODELS / "clip_types.json"
+        if path.exists():
+            raw = json.loads(path.read_text())
+            _types = {
+                "keys": [t["key"] for t in raw["types"]],
+                "emb": np.array([t["embedding"] for t in raw["types"]], dtype="float32"),
+                "scale": float(raw["logit_scale"]),
+            }
+        else:
+            print("models/clip_types.json is missing, so garbage types are not detected.", flush=True)
+            _types = {}
+    return _types
+
+
+def garbage_type(vec):
+    """Which kind of garbage the scene vector looks like: (type key, confidence 0 to 1)."""
+    types = _load_types()
+    if not types or vec is None:
+        return None, None
+    vec = np.asarray(vec, dtype="float32").reshape(-1)
+    probs = _softmax(types["scale"] * (types["emb"] @ vec))
+    best = int(probs.argmax())
+    confidence = float(probs[best])
+    key = types["keys"][best]
+    if confidence < garbage_types.MIN_CONFIDENCE:
+        key = garbage_types.DEFAULT_TYPE
+    return key, round(confidence, 3)
+
+
 def ai_generated_score(img):
     """How sure the model is that the image was made by an AI generator (0 to 1)."""
     sess, meta = _load_ai()
@@ -188,7 +227,9 @@ def check_photo(img, existing_hashes, nearby=()):
     digest = photo_hash(img)
     for other in existing_hashes:
         if other and hash_distance(digest, other) <= DUPLICATE_DISTANCE:
-            return rejected("This photo looks the same as one that was already reported.", None, digest)
+            result = rejected("This photo looks the same as one that was already reported.", None, digest)
+            result["duplicate"] = True
+            return result
 
     ai_score = ai_generated_score(img)
     print(f"Photo check: AI-generated score {ai_score:.2f}", flush=True)
@@ -218,6 +259,8 @@ def check_photo(img, existing_hashes, nearby=()):
                 digest,
             )
 
+    kind, confidence = garbage_type(vec)
+    print(f"Photo check: garbage type {kind} ({confidence})", flush=True)
     return {
         "ok": True,
         "reason": None,
@@ -225,6 +268,9 @@ def check_photo(img, existing_hashes, nearby=()):
         "hash": digest,
         "embedding": to_bytes(vec),
         "fake_score": ai_score,
+        "garbage_type": kind,
+        "type_confidence": confidence,
+        "duplicate": False,
     }
 
 

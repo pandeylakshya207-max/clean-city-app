@@ -39,6 +39,10 @@ flowchart LR
 - **Clear feedback.** If a photo is rejected, the citizen is told exactly why.
 - **Status tracking.** Every report shows Received, Team assigned, Cleaned or Rejected.
 - **Proof of work.** The after-cleaning photo appears in the app and is emailed to the reporter.
+- **48-hour deadline.** Every report shows how long the team has left. Overdue reports are escalated to a senior officer automatically, and the citizen is told.
+- **Not cleaned? Reopen it.** Within 7 days of cleaning, the citizen can reopen the report once.
+- **Green Points.** +10 for a verified report, +5 when it is cleaned, -5 for a rejected report and -3 for re-uploading a photo that was already reported. Badges and a monthly city leaderboard.
+- **Works offline.** With no internet, the report is saved on the phone and sent automatically when the connection is back, keeping the time the photo was taken.
 
 ### For municipal staff
 
@@ -47,6 +51,16 @@ flowchart LR
 - **Assign a team**, **reject a false report with a reason**, or **mark it cleaned** by uploading an after photo.
 - **Fake-photo warning.** Reports the AI is unsure about are flagged so staff check before sending a team.
 - **Staff are registered in advance** by an admin. Nobody can make themselves staff from inside the app.
+- **Garbage type and the right team.** The AI tells plastic, wet waste, construction debris, garden waste, bulky items, e-waste, medical waste and dead animals apart, and suggests the team to send.
+- **Proof of clean.** The after photo is compared with the report photo (CLIP scene similarity) and the staff phone's GPS must be within 150 m of the spot. Cleanings that fail are flagged.
+- **Hotspot map and patrol plan.** Places where garbage keeps coming back, the time of day it usually appears, and when to send a patrol.
+- **BBMP wards.** Every report is placed in one of the 243 BBMP wards (2022 delimitation).
+
+### For everyone: the public scoreboard (`/city`)
+
+- No login needed. A ward map coloured by grade, open and overdue reports, a ward scorecard, before and after photos of recent cleanings, what gets dumped most, and the top citizens of the month.
+- Ward score = 60% for reports cleaned within 48 hours + 40% for reports cleaned at all (A 85+, B 70+, C 50+, D below 50; at least 3 reports needed).
+- No names, phone numbers or exact addresses are shown.
 
 ## How the photo checks work
 
@@ -152,6 +166,10 @@ python database.py citizen name@example.com   Change an account back to citizen
 | GET | `/api/me` | Logged in | Current account and role |
 | POST | `/api/complaints` | Logged in | Submit a report (photo, latitude, longitude, note) |
 | GET | `/api/complaints/mine` | Logged in | The caller's own reports |
+| POST | `/api/complaints/{id}/reopen` | Owner | Reopen a cleaned report within 7 days |
+| GET | `/api/points/me` | Logged in | Green Points, badges and the monthly leaderboard |
+| GET | `/api/public/stats` | Anyone | Public scoreboard: totals, wards, gallery, leaderboard |
+| GET | `/api/staff/hotspots` | Staff | Hotspots, heat map and patrol times |
 | GET | `/api/staff/complaints` | Staff | All reports, with optional status filter |
 | POST | `/api/staff/complaints/{id}/assign` | Staff | Assign a team |
 | POST | `/api/staff/complaints/{id}/reject` | Staff | Reject with a reason |
@@ -173,6 +191,8 @@ Interactive API documentation is available at `/docs` while the server is runnin
 - **A photo of a screen showing garbage can pass.** The live camera rule and the location requirement reduce this, and staff can reject false reports.
 - **Laptop location is approximate.** Phones with GPS are far more accurate.
 - **Mobile-number codes are not sent by SMS yet.** They are printed in the server terminal until an SMS provider is connected.
+- **The proof-of-clean similarity threshold (0.60) is a starting point.** It should be tuned on real before and after photos; the GPS distance check is the stronger signal.
+- **Garbage types come from zero-shot CLIP descriptions**, so unusual piles can be labelled as mixed waste.
 - **Phones need a secure link.** Browsers only allow the camera and GPS over https or on localhost.
 
 ## Roadmap
@@ -181,8 +201,6 @@ Interactive API documentation is available at `/docs` while the server is runnin
 - Hosted database and photo storage for cloud deployment
 - Accept reports only inside the city boundary
 - An admin page for managing staff
-- A map view of open reports for route planning
-- Strikes for accounts that repeatedly send false reports
 
 ---
 

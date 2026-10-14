@@ -47,6 +47,27 @@
   .how ul { margin: 8px 0 0; padding-left: 18px; color: var(--stone); font-size: 13.5px; }
   .how li + li { margin-top: 4px; }
   .popup-name { font-weight: 700; margin-bottom: 4px; }
+  .clock { margin-top: 14px; }
+  .clock-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; color: var(--stone); margin-bottom: 6px; }
+  .clock-head b { font-size: 13.5px; color: var(--ink-2); font-weight: 700; }
+  .bars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; align-items: end; height: 46px; }
+  .bars i { display: block; background: #d9e0d5; border-radius: 3px 3px 1px 1px; min-height: 3px; }
+  .bars i.peak { background: var(--leaf); }
+  .bars i.now { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .hours { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--stone-2); margin-top: 4px; }
+  .plan { padding: 18px; margin-top: 12px; }
+  .plan h3 { display: flex; align-items: center; gap: 8px; }
+  .plan h3 svg { width: 20px; height: 20px; color: var(--leaf); }
+  .plan > p { font-size: 13.5px; color: var(--stone); margin: 4px 0 0; }
+  .stops { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  .stop { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--mist); cursor: pointer; }
+  .stop:hover { background: var(--lime-soft); }
+  .stop time { font-family: var(--head); font-weight: 700; font-size: 17px; min-width: 62px; }
+  .stop .what { flex: 1; min-width: 0; font-size: 14px; }
+  .stop .what b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stop .what span { font-size: 12.5px; color: var(--stone); }
+  .stop.next { background: var(--ink); color: #fff; }
+  .stop.next .what span { color: #c9d3c8; }
 </style>
 </head>
 <body>
@@ -73,6 +94,13 @@
     <div class="stat lime"><span class="num" id="s-high">0</span><span class="lbl">High priority</span></div>
   </div>
 
+  <section class="card plan" id="plan" hidden>
+    <h3><span data-icon="clock"></span>Patrol plan</h3>
+    <p>When garbage usually shows up at each hotspot, and when to send a patrol or cleaning round to stop it. Times are India time.</p>
+    <div class="clock" id="city-clock"></div>
+    <ol class="stops" id="stops"></ol>
+  </section>
+
   <section class="card map-card">
     <div id="map">Loading map...</div>
     <div class="legend">
@@ -93,6 +121,7 @@
       <li>Recent reports count more: a report loses half its weight every 30 days.</li>
       <li>A report that comes in after the spot was already cleaned counts double, because people are dumping there again and again.</li>
       <li>The expected next dumping date is the last cleaning plus the average time garbage took to come back. It is an estimate.</li>
+      <li>The time pattern is the 3-hour window of the day when most reports at a hotspot come in (it needs at least 4 reports, and at least 40% of them in that window). Garbage is dumped before somebody photographs it, so the patrol is suggested one hour before that window.</li>
     </ul>
   </section>
 </div>
@@ -100,7 +129,7 @@
 <nav class="nav" aria-label="Main">
   <a href="/dashboard" aria-label="Dashboard" data-icon="list"></a>
   <a href="/hotspots" class="main" aria-label="Hotspot map" data-icon="map"></a>
-  <button type="button" id="logout-btn" aria-label="Log out" data-icon="logout"></button>
+  <a href="/city" aria-label="City scoreboard" data-icon="city"></a>
 </nav>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
@@ -183,6 +212,69 @@ function metric(value, label) {
   return m;
 }
 
+function hourLabel(h) {
+  return (h % 12 || 12) + (h < 12 ? " am" : " pm");
+}
+
+function windowText(t) {
+  return hourLabel(t.peak_start) + " to " + hourLabel(t.peak_end);
+}
+
+function clockChart(t, title) {
+  const box = el("div", "clock");
+  const head = el("div", "clock-head");
+  head.appendChild(el("b", "", title));
+  head.appendChild(el("span", "", t.peak_start !== null ? "Peak " + windowText(t) : "No clear time yet"));
+  box.appendChild(head);
+  const bars = el("div", "bars");
+  bars.setAttribute("role", "img");
+  const top = Math.max(1, ...t.hours);
+  const nowHour = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", hour12: false })) % 24;
+  t.hours.forEach((n, hour) => {
+    const bar = el("i");
+    bar.style.height = Math.max(6, (n / top) * 100) + "%";
+    const inPeak = t.peak_start !== null && (hour - t.peak_start + 24) % 24 < 3;
+    if (inPeak) bar.classList.add("peak");
+    if (hour === nowHour) bar.classList.add("now");
+    bar.title = hourLabel(hour) + ": " + CC.plural(n, "report", "reports");
+    bars.appendChild(bar);
+  });
+  bars.setAttribute("aria-label", "Reports by hour of day" + (t.peak_start !== null ? ", most between " + windowText(t) : ""));
+  box.appendChild(bars);
+  const hours = el("div", "hours");
+  ["12 am", "6 am", "12 pm", "6 pm", "12 am"].forEach((x) => hours.appendChild(el("span", "", x)));
+  box.appendChild(hours);
+  return box;
+}
+
+function renderPlan(data) {
+  const spots = data.hotspots.filter((h) => h.timing.patrol_hour !== null && h.level !== "low");
+  const plan = $("plan");
+  plan.hidden = data.total_reports === 0;
+  $("city-clock").replaceChildren(clockChart(data.city_timing, "All of Bengaluru"));
+  const stops = $("stops");
+  stops.replaceChildren();
+  if (!spots.length) {
+    stops.appendChild(el("li", "small muted", "No hotspot has a clear time pattern yet. It needs at least 4 reports at the same place."));
+    return;
+  }
+  const nowHour = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", hour12: false })) % 24;
+  spots.sort((a, b) => ((a.timing.patrol_hour - nowHour + 24) % 24) - ((b.timing.patrol_hour - nowHour + 24) % 24));
+  spots.forEach((h, i) => {
+    const t = h.timing;
+    const li = el("li", "stop" + (i === 0 ? " next" : ""));
+    li.appendChild(el("time", "", hourLabel(t.patrol_hour)));
+    const what = el("div", "what");
+    what.appendChild(el("b", "", "#" + h.rank + " " + h.name));
+    what.appendChild(el("span", "", (i === 0 ? "Next stop. " : "") + "Garbage usually shows up " + windowText(t) +
+      (t.busy_day ? ", mostly on " + t.busy_day + "s" : "")));
+    li.appendChild(what);
+    li.appendChild(el("span", "lvl " + h.level, LEVELS[h.level].label));
+    li.addEventListener("click", () => showOnMap(h));
+    stops.appendChild(li);
+  });
+}
+
 function renderCard(h) {
   const card = el("article", "card spot");
   const head = el("div", "spot-head");
@@ -198,6 +290,7 @@ function renderCard(h) {
   metrics.appendChild(metric(String(h.repeats), "came back after cleaning"));
   metrics.appendChild(metric(h.avg_return_days !== null ? comesBack(h.avg_return_days) : "-", "until it returns"));
   card.appendChild(metrics);
+  if (h.timing.peak_start !== null) card.appendChild(clockChart(h.timing, "When garbage shows up"));
 
   card.appendChild(el("div", "line", "Reported by " + CC.plural(h.people, "person", "different people") +
     (h.open_reports ? ". " + CC.plural(h.open_reports, "report is", "reports are") + " still waiting to be cleaned." : ".")));
@@ -210,9 +303,16 @@ function renderCard(h) {
     medium: "Add this spot to the regular cleaning round.",
     low: "Keep an eye on it.",
   };
+  const tm = h.timing;
+  let tipText = tips[h.level];
+  if (tm.peak_start !== null) {
+    tipText = "Most reports here come in " + windowText(tm) + " (" + Math.round(tm.peak_share * 100) + "%)" +
+      (tm.busy_day ? ", mostly on " + tm.busy_day + "s" : "") + ". Send a patrol or cleaning round around " +
+      hourLabel(tm.patrol_hour) + ", before the usual time. " + tipText;
+  }
   const tip = el("div", "tip");
   tip.innerHTML = CC.icon("spark");
-  tip.appendChild(el("span", "", tips[h.level]));
+  tip.appendChild(el("span", "", tipText));
   card.appendChild(tip);
   card.appendChild(el("div", "meta", "First report " + CC.shortDate(h.first_report) + ", latest " + CC.shortDate(h.last_report) +
     ". Report numbers: " + h.report_ids.map((id) => "#" + id).join(", ")));
@@ -242,6 +342,7 @@ async function load() {
     $("s-high").textContent = data.hotspots.filter((h) => h.level === "high").length;
     $("summary").textContent = data.hotspots.length ? "Ranked by score" : "";
     renderMap(data);
+    renderPlan(data);
     list.replaceChildren();
     if (!data.hotspots.length) {
       const empty = el("div", "empty card");
@@ -260,7 +361,6 @@ async function load() {
   }
 }
 
-$("logout-btn").addEventListener("click", CC.logout);
 $("period").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;

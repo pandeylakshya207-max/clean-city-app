@@ -78,6 +78,40 @@
   .blue-pin { width: 24px; height: 24px; border-radius: 50%; background: #2563eb; border: 4px solid #fff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3), 0 4px 10px rgba(0, 0, 0, 0.35); }
   .rv-actions { position: sticky; bottom: 0; display: grid; gap: 10px; margin: 18px -16px 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(238,242,234,0) 0, var(--mist) 22px); }
   .rv { padding-bottom: 0; }
+
+  /* green points */
+  .gp { margin-top: 12px; padding: 18px; }
+  .gp-top { display: flex; align-items: center; gap: 14px; }
+  .gp-ic { width: 52px; height: 52px; border-radius: 16px; background: var(--lime); display: grid; place-items: center; flex: none; }
+  .gp-ic svg { width: 26px; height: 26px; }
+  .gp-num { font-family: var(--head); font-weight: 800; font-size: 32px; letter-spacing: -0.03em; line-height: 1; }
+  .gp-num small { font-size: 14px; font-weight: 600; color: var(--stone); letter-spacing: 0; margin-left: 4px; }
+  .gp-sub { font-size: 13px; color: var(--stone); margin-top: 3px; }
+  .gp-next { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+  .gp-bar { height: 8px; border-radius: 4px; background: var(--mist); margin-top: 6px; overflow: hidden; }
+  .gp-bar i { display: block; height: 100%; background: var(--leaf); border-radius: 4px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .bdg { font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: var(--mist); color: var(--stone-2); }
+  .bdg.on { background: var(--ink); color: var(--lime); }
+  .gp-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; font-size: 12.5px; color: var(--stone); flex-wrap: wrap; }
+
+  /* report extras */
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--mist); color: var(--ink-2); }
+  .tag svg { width: 13px; height: 13px; }
+  .tag.ok { background: var(--green-bg); color: var(--green); }
+  .tag.warn { background: var(--red-bg); color: var(--red); }
+  .tag.wait { background: var(--amber-bg); color: var(--amber); }
+  .due { margin-top: 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+  .due svg { width: 16px; height: 16px; color: var(--stone); flex: none; }
+  .due.late { color: var(--red); font-weight: 600; }
+  .due.late svg { color: var(--red); }
+  .reopen { margin-top: 12px; }
+  .reopen-form { margin-top: 10px; display: grid; gap: 8px; }
+  .reopen-form textarea { min-height: 64px; }
+  .offline-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 16px; background: var(--amber-bg); color: var(--amber); font-size: 13.5px; font-weight: 600; }
+  .offline-bar svg { width: 18px; height: 18px; flex: none; }
+  .queued { border-style: dashed; }
 </style>
 </head>
 <body>
@@ -106,6 +140,21 @@
     <div class="stat lime"><span class="num" id="n-clean">0</span><span class="lbl">Cleaned</span></div>
   </div>
 
+  <div class="offline-bar" id="offline-bar" hidden><span data-icon="cloud"></span><span>You are offline. You can still report garbage: it will be sent when the internet is back.</span></div>
+
+  <section class="card gp" id="gp" hidden>
+    <div class="gp-top">
+      <div class="gp-ic" data-icon="trophy"></div>
+      <div>
+        <div class="gp-num"><span id="gp-points">0</span><small>Green Points</small></div>
+        <div class="gp-sub" id="gp-sub"></div>
+      </div>
+    </div>
+    <div class="gp-next" id="gp-next" hidden><span id="gp-next-text"></span><div class="gp-bar"><i id="gp-bar" style="width:0"></i></div></div>
+    <div class="badges" id="gp-badges"></div>
+    <div class="gp-foot"><span id="gp-rules"></span><a href="/city#leaderboard" class="link-btn">City scoreboard</a></div>
+  </section>
+
   <div class="section-head" id="reports-head"><h2>My reports</h2></div>
   <div class="chips" id="filters" role="tablist" aria-label="Filter reports">
     <button class="chip on" type="button" data-f="all">All</button>
@@ -118,8 +167,10 @@
 
 <nav class="nav" aria-label="Main">
   <a href="#home" class="on" id="nav-home" aria-label="Home" data-icon="home"></a>
-  <button class="main" id="nav-camera" type="button" aria-label="Report garbage" data-icon="camera"></button>
   <a href="#reports-head" id="nav-list" aria-label="My reports" data-icon="list"></a>
+  <button class="main" id="nav-camera" type="button" aria-label="Report garbage" data-icon="camera"></button>
+  <a href="/city" id="nav-city" aria-label="City scoreboard" data-icon="city"></a>
+  <a href="#gp" id="nav-points" aria-label="My Green Points" data-icon="trophy"></a>
 </nav>
 
 <div class="overlay dark" id="step-camera" hidden>
@@ -174,6 +225,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="/static/ui.js"></script>
+<script src="/static/offline.js"></script>
 <script>
 const $ = CC.$;
 const el = CC.el;
@@ -191,7 +243,9 @@ let pin = null;
 let accuracyCircle = null;
 let pinCentred = false;
 let reports = [];
+let queued = [];
 let filter = "all";
+let photoTakenAt = null;
 
 function setMsg(text, ok) {
   $("msg").textContent = text || "";
@@ -350,6 +404,7 @@ function takePhoto() {
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
+  photoTakenAt = new Date().toISOString();
   canvas.toBlob((blob) => {
     photoBlob = blob;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -398,23 +453,44 @@ async function submitReport() {
   const btn = $("submit-btn");
   btn.disabled = true;
   $("retake-btn").disabled = true;
+  const where = reportLocation();
+  const item = {
+    photo: photoBlob,
+    latitude: where.latitude,
+    longitude: where.longitude,
+    gps_latitude: position.latitude,
+    gps_longitude: position.longitude,
+    description: $("description").value,
+    taken_at: photoTakenAt || new Date().toISOString(),
+  };
+  if (!CC.online()) {
+    await saveOffline(item);
+    btn.disabled = false;
+    $("retake-btn").disabled = false;
+    return;
+  }
   setChecking(true);
   try {
-    const where = reportLocation();
     const form = new FormData();
-    form.append("photo", photoBlob, "photo.jpg");
-    form.append("latitude", where.latitude);
-    form.append("longitude", where.longitude);
-    form.append("gps_latitude", position.latitude);
-    form.append("gps_longitude", position.longitude);
-    form.append("description", $("description").value);
+    form.append("photo", item.photo, "photo.jpg");
+    form.append("latitude", item.latitude);
+    form.append("longitude", item.longitude);
+    form.append("gps_latitude", item.gps_latitude);
+    form.append("gps_longitude", item.gps_longitude);
+    form.append("description", item.description);
+    form.append("taken_at", item.taken_at);
     const saved = await CC.api("/api/complaints", { method: "POST", body: form });
     reset();
-    CC.toast("Report #" + saved.id + " sent to the municipal team.");
+    CC.toast("Report #" + saved.id + " sent. +10 Green Points.");
     filter = "all";
     loadReports();
   } catch (err) {
-    setMsg(err.message);
+    if (err instanceof TypeError || !CC.online()) {
+      setChecking(false);
+      await saveOffline(item);
+    } else {
+      setMsg(err.message);
+    }
   } finally {
     setChecking(false);
     btn.disabled = false;
@@ -446,6 +522,12 @@ function renderReport(c) {
   link.rel = "noopener";
   meta.appendChild(link);
   info.appendChild(meta);
+  const tags = el("div", "tags");
+  if (c.garbage_type) tags.appendChild(tag("trash", c.garbage_type.name));
+  if (c.ward) tags.appendChild(tag("city", "Ward " + c.ward.no + ", " + c.ward.name));
+  if (c.status === "cleaned" && c.clean_check === "verified") tags.appendChild(tag("shield", "AI verified: same place", "ok"));
+  if (c.reopened) tags.appendChild(tag("refresh", "Reopened by you", "wait"));
+  if (tags.childNodes.length) info.appendChild(tags);
   row.appendChild(info);
   card.appendChild(row);
 
@@ -454,6 +536,20 @@ function renderReport(c) {
   } else {
     card.appendChild(CC.tracker(c.status));
     if (c.status === "assigned") card.appendChild(el("div", "note info", "A municipal team has been assigned to clean this spot."));
+    if ((c.status === "pending" || c.status === "assigned") && c.hours_left !== null && c.hours_left !== undefined) {
+      const due = el("div", "due" + (c.overdue ? " late" : ""));
+      due.innerHTML = CC.icon("clock");
+      due.appendChild(el("span", "", c.overdue
+        ? "Overdue by " + CC.hoursText(c.hours_left) + (c.escalated ? ". Sent to a senior officer." : ".")
+        : "Should be cleaned within " + CC.hoursText(c.hours_left)));
+      card.appendChild(due);
+    }
+    if (c.status === "cleaned" && c.on_time !== undefined) {
+      const due = el("div", "due");
+      due.innerHTML = CC.icon("clock");
+      due.appendChild(el("span", "", c.on_time ? "Cleaned within the 48-hour deadline." : "Cleaned, but after the 48-hour deadline."));
+      card.appendChild(due);
+    }
   }
   if (c.description) card.appendChild(el("div", "note", c.description));
 
@@ -477,7 +573,174 @@ function renderReport(c) {
     ba.appendChild(after);
     card.appendChild(ba);
   }
+  if (c.can_reopen) card.appendChild(reopenBox(c));
   return card;
+}
+
+function tag(icon, text, kind) {
+  const t = el("span", "tag" + (kind ? " " + kind : ""));
+  t.innerHTML = CC.icon(icon);
+  t.appendChild(document.createTextNode(text));
+  return t;
+}
+
+function reopenBox(c) {
+  const box = el("div", "reopen");
+  const open = el("button", "link-btn", "Not cleaned? Reopen this report");
+  open.type = "button";
+  box.appendChild(open);
+  open.addEventListener("click", () => {
+    open.hidden = true;
+    const form = el("div", "reopen-form");
+    const text = el("textarea", "input");
+    text.placeholder = "What is wrong? For example: only half was cleaned";
+    text.maxLength = 300;
+    const send = el("button", "btn sm", "Reopen report");
+    send.type = "button";
+    const cancel = el("button", "link-btn", "Cancel");
+    cancel.type = "button";
+    form.append(text, send, cancel);
+    box.appendChild(form);
+    text.focus();
+    cancel.addEventListener("click", () => { form.remove(); open.hidden = false; });
+    send.addEventListener("click", async () => {
+      send.disabled = true;
+      try {
+        await CC.api("/api/complaints/" + c.id + "/reopen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: text.value }),
+        });
+        CC.toast("Report #" + c.id + " reopened. The team has 48 hours again.");
+        loadReports();
+      } catch (err) {
+        send.disabled = false;
+        CC.toast(err.message, true);
+      }
+    });
+  });
+  return box;
+}
+
+function renderQueued(item) {
+  const card = el("article", "card queued");
+  const row = el("div", "report");
+  const img = el("img", "thumb");
+  img.src = URL.createObjectURL(item.photo);
+  img.alt = "Photo saved offline";
+  row.appendChild(img);
+  const info = el("div", "r-info");
+  const top = el("div", "r-top");
+  top.appendChild(el("span", "r-id", "Saved on this phone"));
+  top.appendChild(el("span", "badge pending", "Waiting"));
+  info.appendChild(top);
+  info.appendChild(el("div", "addr", item.latitude.toFixed(5) + ", " + item.longitude.toFixed(5)));
+  info.appendChild(el("div", "r-meta", "Taken " + CC.formatDate(item.taken_at)));
+  row.appendChild(info);
+  card.appendChild(row);
+  card.appendChild(el("div", "note info", "No internet when you sent this. It will be sent and checked automatically when you are back online."));
+  const actions = el("div", "tags");
+  const send = el("button", "btn sm", "Send now");
+  send.type = "button";
+  send.addEventListener("click", () => flushQueue(true));
+  const del = el("button", "link-btn", "Delete");
+  del.type = "button";
+  del.style.marginLeft = "8px";
+  del.addEventListener("click", async () => {
+    await CCOffline.remove(item.id);
+    loadQueue();
+  });
+  actions.append(send, del);
+  card.appendChild(actions);
+  return card;
+}
+
+async function saveOffline(item) {
+  try {
+    await CCOffline.add(Object.assign({ token: CC.token() }, item));
+  } catch (err) {
+    setMsg("No internet, and this phone could not save the report. Please try again when you are online.");
+    return;
+  }
+  reset();
+  CC.toast("No internet. Report saved on this phone and will be sent automatically.");
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (reg.sync) await reg.sync.register("cc-send");
+  } catch (err) {}
+  loadQueue();
+}
+
+async function loadQueue() {
+  try {
+    queued = (await CCOffline.list()).sort((a, b) => b.id - a.id);
+  } catch (err) {
+    queued = [];
+  }
+  renderList();
+}
+
+let flushing = false;
+async function flushQueue(manual) {
+  if (flushing || !CC.online()) {
+    if (manual) CC.toast("Still offline. It will be sent when the internet is back.", true);
+    return;
+  }
+  flushing = true;
+  try {
+    await CCOffline.flush();
+  } catch (err) {}
+  flushing = false;
+  await showSentResults();
+  loadQueue();
+}
+
+async function showSentResults() {
+  let results = [];
+  try { results = await CCOffline.takeResults(); } catch (err) {}
+  if (!results.length) return;
+  const ok = results.filter((r) => r.ok);
+  const bad = results.filter((r) => !r.ok);
+  if (bad.length) CC.toast((ok.length ? CC.plural(ok.length, "report", "reports") + " sent. " : "") + "A report saved offline was not accepted: " + bad[0].message, true);
+  else CC.toast(CC.plural(ok.length, "report saved offline was", "reports saved offline were") + " sent to the municipal team.");
+  loadReports();
+  loadPoints();
+}
+
+function setOnline() {
+  $("offline-bar").hidden = CC.online();
+  if (CC.online()) flushQueue(false);
+}
+
+async function loadPoints() {
+  let p;
+  try {
+    p = await CC.api("/api/points/me");
+    CC.cacheSet("cc_points", p);
+  } catch (err) {
+    p = CC.cacheGet("cc_points");
+    if (!p) return;
+  }
+  $("gp").hidden = false;
+  $("gp-points").textContent = p.points;
+  $("gp-sub").textContent = p.month_rank
+    ? p.month_points + " this month, rank #" + p.month_rank + " in Bengaluru"
+    : "Report garbage to earn points and climb the city leaderboard";
+  if (p.next_badge) {
+    $("gp-next").hidden = false;
+    $("gp-next-text").textContent = "Next badge: " + p.next_badge.name + " (" + p.next_badge.have + " of " + p.next_badge.need + ")";
+    $("gp-bar").style.width = Math.min(100, (100 * p.next_badge.have) / p.next_badge.need) + "%";
+  } else {
+    $("gp-next").hidden = true;
+  }
+  const badges = $("gp-badges");
+  badges.replaceChildren();
+  p.badges.forEach((b) => {
+    const node = el("span", "bdg" + (b.earned ? " on" : ""), b.name);
+    node.title = b.detail + (b.earned ? " (earned)" : "");
+    badges.appendChild(node);
+  });
+  $("gp-rules").textContent = "+" + p.rules.report + " per verified report, +" + p.rules.cleaned + " when it is cleaned";
 }
 
 function renderList() {
@@ -489,6 +752,8 @@ function renderList() {
   });
   const shown = reports.filter((c) =>
     filter === "all" ? true : filter === "open" ? (c.status === "pending" || c.status === "assigned") : c.status === filter);
+  if (filter === "all" || filter === "open") for (const q of queued) list.appendChild(renderQueued(q));
+  if (!shown.length && list.childNodes.length) return;
   if (!shown.length) {
     const empty = el("div", "empty card");
     const big = el("div", "big");
@@ -504,7 +769,14 @@ function renderList() {
 
 async function loadReports() {
   try {
-    reports = await CC.api("/api/complaints/mine");
+    try {
+      reports = await CC.api("/api/complaints/mine");
+      CC.cacheSet("cc_reports", reports);
+    } catch (err) {
+      const cached = CC.cacheGet("cc_reports");
+      if (!(err instanceof TypeError) || !cached) throw err;
+      reports = cached;
+    }
     $("n-all").textContent = reports.length;
     $("n-open").textContent = reports.filter((c) => c.status === "pending" || c.status === "assigned").length;
     $("n-clean").textContent = reports.filter((c) => c.status === "cleaned").length;
@@ -535,14 +807,33 @@ $("logout-btn").addEventListener("click", CC.logout);
     return;
   }
   $("greet").textContent = CC.greeting();
+  let user = null;
   try {
-    const user = await CC.api("/api/me");
-    $("who").textContent = user.contact;
-    $("avatar").textContent = CC.initial(user.contact);
+    user = await CC.api("/api/me");
+    CC.cacheSet("cc_user", user);
   } catch (err) {
-    return;
+    if (err instanceof TypeError) user = CC.cacheGet("cc_user");
   }
+  if (!user) return;
+  $("who").textContent = user.contact;
+  $("avatar").textContent = CC.initial(user.contact);
+  window.addEventListener("online", setOnline);
+  window.addEventListener("offline", setOnline);
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data && e.data.type === "cc-sent") { showSentResults(); loadQueue(); }
+    });
+  }
+  $("offline-bar").hidden = CC.online();
   loadReports();
+  loadPoints();
+  await loadQueue();
+  await showSentResults();
+  if (CC.online() && queued.length) flushQueue(false);
+  if (location.hash === "#camera") {
+    history.replaceState(null, "", "/report");
+    openCamera();
+  }
 })();
 </script>
 </body>

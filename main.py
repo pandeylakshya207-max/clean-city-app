@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -11,6 +11,8 @@ import checks
 import complaints
 import staff
 import hotspots
+import points
+import public
 import storage
 from database import USE_POSTGRES, init_db, set_role
 
@@ -47,6 +49,8 @@ if storage.MODE == "local":
 app.include_router(complaints.router)
 app.include_router(staff.router)
 app.include_router(hotspots.router)
+app.include_router(points.router)
+app.include_router(public.router)
 
 
 class OtpRequest(BaseModel):
@@ -82,6 +86,8 @@ def health():
         "photo_storage": storage.MODE,
         "email_configured": bool(os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD")),
         "model_files_mb": checks.models_status(),
+        "garbage_types_ready": (checks.MODELS / "clip_types.json").exists(),
+        "escalation_contacts_set": bool(os.getenv("ESCALATION_CONTACTS")),
     }
 
 
@@ -142,5 +148,6 @@ def dashboard_page():
     return page("dashboard.html")
 
 
-
-
+@app.get("/city")
+def city_page():
+    return page("city.html")

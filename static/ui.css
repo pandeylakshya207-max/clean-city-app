@@ -54,7 +54,7 @@ button { cursor: pointer; }
 }
 .hello-text { min-width: 0; }
 .hello-text .who { font-size: 12.5px; color: var(--stone); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hello-text .greet { font-family: var(--head); font-weight: 700; font-size: 20px; letter-spacing: -0.02em; }
+.hello-text .greet { font-family: var(--head); font-weight: 700; font-size: 20px; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn {
   width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper);
   display: grid; place-items: center; flex: none; color: var(--ink); text-decoration: none;

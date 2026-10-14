@@ -14,7 +14,7 @@ import hotspots
 import points
 import public
 import storage
-from database import USE_POSTGRES, init_db, set_role
+from database import USE_POSTGRES, get_db, init_db, set_role
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -62,6 +62,13 @@ class OtpVerify(BaseModel):
     code: str
 
 
+class NameBody(BaseModel):
+    name: str = ""
+
+
+NAME_MAX = 40
+
+
 @app.post("/api/auth/request-otp")
 def request_otp(body: OtpRequest):
     return auth.request_otp(body.contact)
@@ -72,9 +79,36 @@ def verify_otp(body: OtpVerify):
     return auth.verify_otp(body.contact, body.code)
 
 
+def me_dict(user):
+    return {
+        "id": user["id"],
+        "contact": user["contact"],
+        "contact_type": user.get("contact_type"),
+        "role": user["role"],
+        "name": user.get("display_name") or None,
+        "member_since": user.get("created_at"),
+    }
+
+
 @app.get("/api/me")
 def me(user=Depends(auth.get_current_user)):
-    return {"id": user["id"], "contact": user["contact"], "role": user["role"]}
+    return me_dict(user)
+
+
+@app.post("/api/me/name")
+def set_name(body: NameBody, user=Depends(auth.get_current_user)):
+    """The name shown in the person's own profile. Never shown on public pages."""
+    name = " ".join(body.name.split())[:NAME_MAX]
+    if any(ch in name for ch in "<>{}[]\\/@#$%^*=|~`\""):
+        raise HTTPException(400, "Use only letters, spaces and simple punctuation in your name.")
+    conn = get_db()
+    try:
+        conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (name or None, user["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    user["display_name"] = name or None
+    return me_dict(user)
 
 
 @app.get("/api/health")
@@ -151,3 +185,8 @@ def dashboard_page():
 @app.get("/city")
 def city_page():
     return page("city.html")
+
+
+@app.get("/profile")
+def profile_page():
+    return page("profile.html")

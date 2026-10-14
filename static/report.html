@@ -118,7 +118,7 @@
 <div class="app" id="home">
   <div class="topbar">
     <div class="hello">
-      <div class="avatar" id="avatar" aria-hidden="true">C</div>
+      <a class="avatar" id="avatar" href="/profile" aria-label="My profile" style="text-decoration:none">C</a>
       <div class="hello-text">
         <div class="greet" id="greet">Hello</div>
         <div class="who" id="who"></div>
@@ -152,7 +152,7 @@
     </div>
     <div class="gp-next" id="gp-next" hidden><span id="gp-next-text"></span><div class="gp-bar"><i id="gp-bar" style="width:0"></i></div></div>
     <div class="badges" id="gp-badges"></div>
-    <div class="gp-foot"><span id="gp-rules"></span><a href="/city#leaderboard" class="link-btn">City scoreboard</a></div>
+    <div class="gp-foot"><span id="gp-rules"></span><a href="/profile" class="link-btn">My profile and badges</a></div>
   </section>
 
   <div class="section-head" id="reports-head"><h2>My reports</h2></div>
@@ -170,7 +170,7 @@
   <a href="#reports-head" id="nav-list" aria-label="My reports" data-icon="list"></a>
   <button class="main" id="nav-camera" type="button" aria-label="Report garbage" data-icon="camera"></button>
   <a href="/city" id="nav-city" aria-label="City scoreboard" data-icon="city"></a>
-  <a href="#gp" id="nav-points" aria-label="My Green Points" data-icon="trophy"></a>
+  <a href="/profile" id="nav-profile" aria-label="My profile" data-icon="user"></a>
 </nav>
 
 <div class="overlay dark" id="step-camera" hidden>
@@ -816,7 +816,8 @@ $("logout-btn").addEventListener("click", CC.logout);
   }
   if (!user) return;
   $("who").textContent = user.contact;
-  $("avatar").textContent = CC.initial(user.contact);
+  $("avatar").textContent = CC.initial(user.name || user.contact);
+  if (user.name) $("greet").textContent = CC.greeting() + ", " + user.name.split(" ")[0];
   window.addEventListener("online", setOnline);
   window.addEventListener("offline", setOnline);
   if (navigator.serviceWorker) {

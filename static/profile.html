@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef2ea">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/ui.css">
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
+<title>Clean City - My profile</title>
+<style>
+  .p-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .p-head h1 { font-size: 26px; }
+  .me { padding: 22px; }
+  .me-top { display: flex; align-items: center; gap: 16px; position: relative; }
+  .big-av { width: 72px; height: 72px; border-radius: 24px; background: var(--lime); color: var(--ink); display: grid; place-items: center; font-family: var(--head); font-weight: 800; font-size: 32px; flex: none; }
+  .me-name { font-family: var(--head); font-weight: 700; font-size: 24px; letter-spacing: -0.02em; color: #fff; overflow-wrap: anywhere; line-height: 1.15; }
+  .me-name.noname { color: #b9c4bd; font-size: 19px; }
+  .me-contact { color: #c9d3cc; font-size: 14px; margin-top: 4px; overflow-wrap: anywhere; }
+  .role { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: rgba(200, 241, 105, 0.16); color: var(--lime); }
+  .role svg { width: 14px; height: 14px; }
+  .edit-btn { margin-top: 18px; }
+  .name-form { margin-top: 16px; display: grid; gap: 10px; }
+  .name-form .input { background: #fff; color: var(--ink); }
+  .name-row { display: flex; gap: 8px; }
+  .name-row .btn { flex: 1; }
+  .name-help { font-size: 12.5px; color: #b9c4bd; }
+  .stats { margin-top: 12px; }
+  .pts { padding: 18px; margin-top: 12px; }
+  .pts-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .pts-num { font-family: var(--head); font-weight: 800; font-size: 40px; letter-spacing: -0.03em; line-height: 1; }
+  .pts-num small { font-family: var(--body); font-size: 14px; font-weight: 600; color: var(--stone); letter-spacing: 0; margin-left: 4px; }
+  .rank { text-align: right; }
+  .rank b { display: block; font-family: var(--head); font-size: 22px; }
+  .rank span { font-size: 12.5px; color: var(--stone); }
+  .next { margin-top: 14px; font-size: 13.5px; color: var(--ink-2); }
+  .bar { height: 10px; border-radius: 5px; background: var(--mist); margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 5px; background: var(--leaf); }
+  .badges { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
+  .bd { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; background: var(--mist); min-width: 0; }
+  .bd .ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; background: #dfe5db; color: var(--stone-2); }
+  .bd .ic svg { width: 20px; height: 20px; }
+  .bd b { display: block; font-size: 13.5px; }
+  .bd span { display: block; font-size: 11.5px; color: var(--stone); line-height: 1.3; }
+  .bd.on { background: var(--lime-soft); }
+  .bd.on .ic { background: var(--ink); color: var(--lime); }
+  .rules { margin-top: 14px; display: grid; gap: 6px; }
+  .rule { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 8px 12px; border-radius: 12px; background: var(--mist); }
+  .rule b { font-family: var(--head); }
+  .rule b.minus { color: var(--red); }
+  .rule b.plus { color: var(--leaf); }
+  .list-card { padding: 6px 18px; margin-top: 12px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; font: inherit; }
+  .row:last-child { border-bottom: 0; }
+  .row .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--mist); display: grid; place-items: center; flex: none; color: var(--ink); }
+  .row .ic svg { width: 20px; height: 20px; }
+  .row .tx { flex: 1; min-width: 0; }
+  .row .tx b { display: block; font-size: 14.5px; }
+  .row .tx span { display: block; font-size: 12.5px; color: var(--stone); overflow-wrap: anywhere; }
+  .row .chev { color: var(--stone-2); }
+  .row .chev svg { width: 18px; height: 18px; }
+  .row.danger .ic { background: var(--red-bg); color: var(--red); }
+  .row.danger b { color: var(--red); }
+  .ver { text-align: center; font-size: 12px; color: var(--stone); margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="p-head">
+    <h1>My profile</h1>
+    <button class="icon-btn" id="logout-top" type="button" aria-label="Log out" data-icon="logout"></button>
+  </div>
+
+  <section class="hero me">
+    <div class="me-top">
+      <div class="big-av" id="av" aria-hidden="true">C</div>
+      <div style="min-width:0">
+        <div class="me-name" id="name">Loading...</div>
+        <div class="me-contact" id="contact"></div>
+        <div class="role" id="role"></div>
+      </div>
+    </div>
+    <button class="btn lime sm edit-btn" id="edit-btn" type="button">Edit name</button>
+    <div class="name-form" id="name-form" hidden>
+      <label class="name-help" for="name-input">Your name is only shown to you and on your own reports screen. It is never shown on public pages.</label>
+      <input class="input" id="name-input" type="text" maxlength="40" autocomplete="name" placeholder="Your name">
+      <div class="name-row">
+        <button class="btn lime sm" id="save-name" type="button">Save</button>
+        <button class="btn sm" id="cancel-name" type="button" style="background:rgba(255,255,255,0.12)">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="citizen" hidden>
+    <div class="stats" aria-label="My reports">
+      <div class="stat"><span class="num" id="n-all">0</span><span class="lbl">Reported</span></div>
+      <div class="stat lime"><span class="num" id="n-clean">0</span><span class="lbl">Cleaned</span></div>
+      <div class="stat dark"><span class="num" id="n-ontime">-</span><span class="lbl">Cleaned on time</span></div>
+    </div>
+
+    <section class="card pts" id="gp">
+      <div class="pts-top">
+        <div class="pts-num"><span id="points">0</span><small>Green Points</small></div>
+        <div class="rank"><b id="rank">-</b><span id="rank-sub">rank this month</span></div>
+      </div>
+      <div class="next" id="next" hidden><span id="next-text"></span><div class="bar"><i id="next-bar" style="width:0"></i></div></div>
+      <div class="badges" id="badges"></div>
+      <div class="section-head" style="margin:18px 2px 0"><h3>How to earn points</h3></div>
+      <div class="rules" id="rules"></div>
+    </section>
+
+    <div class="section-head"><h2>My city</h2></div>
+    <section class="card list-card">
+      <div class="row"><span class="ic" data-icon="city"></span><span class="tx"><b id="ward-top">-</b><span id="ward-sub">The ward you report in most</span></span></div>
+      <div class="row"><span class="ic" data-icon="pin"></span><span class="tx"><b id="wards-count">0 wards</b><span>Different wards you have helped clean</span></span></div>
+      <div class="row"><span class="ic" data-icon="cloud"></span><span class="tx"><b id="queued">None</b><span>Reports saved on this phone, waiting for internet</span></span></div>
+    </section>
+  </div>
+
+  <div id="staff" hidden>
+    <div class="stats four" aria-label="City today">
+      <div class="stat dark"><span class="num" id="s-pending">0</span><span class="lbl">Waiting</span></div>
+      <div class="stat"><span class="num" id="s-assigned">0</span><span class="lbl">Team assigned</span></div>
+      <div class="stat"><span class="num" id="s-overdue">0</span><span class="lbl">Overdue</span></div>
+      <div class="stat lime"><span class="num" id="s-cleaned">0</span><span class="lbl">Cleaned</span></div>
+    </div>
+    <section class="card list-card">
+      <a class="row" href="/dashboard"><span class="ic" data-icon="list"></span><span class="tx"><b>Municipal dashboard</b><span>Assign, clean or reject reports</span></span><span class="chev" data-icon="arrow"></span></a>
+      <a class="row" href="/hotspots"><span class="ic" data-icon="flame"></span><span class="tx"><b>Hotspots and patrol plan</b><span>Where and when garbage keeps coming back</span></span><span class="chev" data-icon="arrow"></span></a>
+    </section>
+  </div>
+
+  <div class="section-head"><h2>Account</h2></div>
+  <section class="card list-card">
+    <div class="row"><span class="ic" data-icon="user"></span><span class="tx"><b id="login-type">Login</b><span id="login-sub"></span></span></div>
+    <div class="row"><span class="ic" data-icon="mail"></span><span class="tx"><b>Notifications</b><span id="notify-sub"></span></span></div>
+    <div class="row"><span class="ic" data-icon="clock"></span><span class="tx"><b>Member since</b><span id="since">-</span></span></div>
+    <a class="row" href="/city"><span class="ic" data-icon="city"></span><span class="tx"><b>City scoreboard</b><span>How clean every ward is, live</span></span><span class="chev" data-icon="arrow"></span></a>
+    <button class="row danger" id="logout-btn" type="button"><span class="ic" data-icon="logout"></span><span class="tx"><b>Log out</b><span>You can log in again with a new code</span></span></button>
+  </section>
+  <p class="ver">Clean City for Bengaluru</p>
+</div>
+
+<nav class="nav" id="nav-citizen" aria-label="Main" hidden>
+  <a href="/report" aria-label="Home" data-icon="home"></a>
+  <a href="/report#reports-head" aria-label="My reports" data-icon="list"></a>
+  <a href="/report#camera" class="main" aria-label="Report garbage" data-icon="camera"></a>
+  <a href="/city" aria-label="City scoreboard" data-icon="city"></a>
+  <a href="/profile" class="on" aria-label="My profile" data-icon="user"></a>
+</nav>
+<nav class="nav" id="nav-staff" aria-label="Main" hidden>
+  <a href="/dashboard" aria-label="Dashboard" data-icon="list"></a>
+  <a href="/hotspots" class="main" aria-label="Hotspot map" data-icon="map"></a>
+  <a href="/city" aria-label="City scoreboard" data-icon="city"></a>
+</nav>
+
+<script src="/static/ui.js"></script>
+<script src="/static/offline.js"></script>
+<script>
+const $ = CC.$;
+const el = CC.el;
+CC.fillIcons();
+const BADGE_ICONS = { first: "camera", regular: "check", guardian: "shield", hero: "trophy" };
+let user = null;
+
+function monthYear(iso) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return "-";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, 1);
+  return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
+function showUser() {
+  const display = user.name || "";
+  $("name").textContent = display || "No name added yet";
+  $("name").classList.toggle("noname", !display);
+  $("contact").textContent = user.contact;
+  $("av").textContent = CC.initial(display || user.contact);
+  $("role").innerHTML = CC.icon(user.role === "staff" ? "shield" : "user");
+  $("role").appendChild(document.createTextNode(user.role === "staff" ? "Municipal staff" : "Citizen reporter"));
+  $("edit-btn").textContent = display ? "Edit name" : "Add your name";
+  const email = user.contact_type === "email" || user.contact.includes("@");
+  $("login-type").textContent = email ? "Email login" : "Mobile number login";
+  $("login-sub").textContent = user.contact + ", with a one-time code. No password to remember.";
+  $("notify-sub").textContent = email
+    ? "Updates and after-cleaning photos are emailed to " + user.contact
+    : "Updates by SMS are coming soon. You can see every update here in the app.";
+  $("since").textContent = monthYear(user.member_since);
+}
+
+function openEditor(open) {
+  $("name-form").hidden = !open;
+  $("edit-btn").hidden = open;
+  if (open) {
+    $("name-input").value = user.name || "";
+    $("name-input").focus();
+  }
+}
+
+async function saveName() {
+  const btn = $("save-name");
+  btn.disabled = true;
+  try {
+    user = await CC.api("/api/me/name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("name-input").value }),
+    });
+    CC.cacheSet("cc_user", user);
+    showUser();
+    openEditor(false);
+    CC.toast(user.name ? "Name saved." : "Name removed.");
+  } catch (err) {
+    CC.toast(err instanceof TypeError ? "No internet. Try again when you are online." : err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderPoints(p) {
+  $("points").textContent = p.points;
+  $("rank").textContent = p.month_rank ? "#" + p.month_rank : "-";
+  $("rank-sub").textContent = p.month_rank ? p.month_points + " points this month" : "no points yet this month";
+  if (p.next_badge) {
+    $("next").hidden = false;
+    $("next-text").textContent = "Next badge: " + p.next_badge.name + " (" + p.next_badge.have + " of " + p.next_badge.need + ")";
+    $("next-bar").style.width = Math.min(100, (100 * p.next_badge.have) / p.next_badge.need) + "%";
+  } else {
+    $("next").hidden = true;
+  }
+  const box = $("badges");
+  box.replaceChildren();
+  p.badges.forEach((b) => {
+    const node = el("div", "bd" + (b.earned ? " on" : ""));
+    const ic = el("span", "ic");
+    ic.innerHTML = CC.icon(BADGE_ICONS[b.key] || "check");
+    node.appendChild(ic);
+    const t = el("div");
+    t.style.minWidth = "0";
+    t.appendChild(el("b", "", b.name));
+    t.appendChild(el("span", "", b.earned ? "Earned: " + b.detail.charAt(0).toLowerCase() + b.detail.slice(1) : b.detail));
+    node.appendChild(t);
+    box.appendChild(node);
+  });
+  const rules = $("rules");
+  rules.replaceChildren();
+  [
+    ["A verified report", p.rules.report],
+    ["Your report is cleaned", p.rules.cleaned],
+    ["A report is rejected", p.rules.rejected],
+    ["A photo that was already reported", p.rules.duplicate],
+  ].forEach(([label, value]) => {
+    const r = el("div", "rule");
+    r.appendChild(el("span", "", label));
+    r.appendChild(el("b", value > 0 ? "plus" : "minus", (value > 0 ? "+" : "") + value));
+    rules.appendChild(r);
+  });
+}
+
+function renderReports(reports) {
+  const cleaned = reports.filter((c) => c.status === "cleaned");
+  $("n-all").textContent = reports.length;
+  $("n-clean").textContent = cleaned.length;
+  const timed = cleaned.filter((c) => c.on_time !== undefined);
+  $("n-ontime").textContent = timed.length ? Math.round((100 * timed.filter((c) => c.on_time).length) / timed.length) + "%" : "-";
+  const counts = {};
+  reports.forEach((c) => {
+    if (c.ward && c.status !== "rejected") {
+      const key = "Ward " + c.ward.no + ", " + c.ward.name;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  });
+  const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  $("ward-top").textContent = names.length ? names[0] : "No reports yet";
+  $("ward-sub").textContent = names.length ? CC.plural(counts[names[0]], "report", "reports") + " here, the ward you report in most" : "Your most reported ward will show here";
+  $("wards-count").textContent = CC.plural(names.length, "ward", "wards");
+}
+
+async function loadCitizen() {
+  $("citizen").hidden = false;
+  $("nav-citizen").hidden = false;
+  try {
+    const p = await CC.api("/api/points/me");
+    CC.cacheSet("cc_points", p);
+    renderPoints(p);
+  } catch (err) {
+    const p = CC.cacheGet("cc_points");
+    if (p) renderPoints(p);
+  }
+  try {
+    const reports = await CC.api("/api/complaints/mine");
+    CC.cacheSet("cc_reports", reports);
+    renderReports(reports);
+  } catch (err) {
+    renderReports(CC.cacheGet("cc_reports") || []);
+  }
+  try {
+    const q = await CCOffline.list();
+    $("queued").textContent = q.length ? CC.plural(q.length, "report", "reports") + " waiting" : "None";
+  } catch (err) {}
+}
+
+async function loadStaff() {
+  $("staff").hidden = false;
+  $("nav-staff").hidden = false;
+  try {
+    const data = await CC.api("/api/staff/complaints");
+    const c = data.counts || {};
+    $("s-pending").textContent = c.pending || 0;
+    $("s-assigned").textContent = c.assigned || 0;
+    $("s-cleaned").textContent = c.cleaned || 0;
+    $("s-overdue").textContent = data.complaints.filter((x) => x.overdue).length;
+  } catch (err) {}
+}
+
+$("edit-btn").addEventListener("click", () => openEditor(true));
+$("cancel-name").addEventListener("click", () => openEditor(false));
+$("save-name").addEventListener("click", saveName);
+$("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") saveName(); });
+$("logout-btn").addEventListener("click", CC.logout);
+$("logout-top").addEventListener("click", CC.logout);
+
+(async () => {
+  if (!CC.token()) {
+    CC.logout();
+    return;
+  }
+  try {
+    user = await CC.api("/api/me");
+    CC.cacheSet("cc_user", user);
+  } catch (err) {
+    if (err instanceof TypeError) user = CC.cacheGet("cc_user");
+  }
+  if (!user) return;
+  showUser();
+  if (user.role === "staff") loadStaff();
+  else loadCitizen();
+})();
+</script>
+</body>
+</html>

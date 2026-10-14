@@ -2,11 +2,12 @@
 // and sends reports saved offline as soon as the connection is back.
 importScripts("/static/offline.js");
 
-const VERSION = "cc-v3";
+const VERSION = "cc-v4";
 const SHELL = VERSION + "-shell";
 const PHOTOS = VERSION + "-photos";
 const PRECACHE = [
   "/report",
+  "/profile",
   "/static/ui.css",
   "/static/ui.js",
   "/static/offline.js",

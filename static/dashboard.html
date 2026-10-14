@@ -83,7 +83,7 @@
 <div class="app wide">
   <div class="topbar">
     <div class="hello">
-      <div class="avatar" id="avatar" aria-hidden="true">S</div>
+      <a class="avatar" id="avatar" href="/profile" aria-label="My profile" style="text-decoration:none">S</a>
       <div class="hello-text">
         <div class="greet" id="greet">Hello</div>
         <div class="who" id="who"></div>
@@ -489,7 +489,8 @@ $("logout-btn").addEventListener("click", CC.logout);
     return;
   }
   $("who").textContent = user.contact;
-  $("avatar").textContent = CC.initial(user.contact);
+  $("avatar").textContent = CC.initial(user.name || user.contact);
+  if (user.name) $("greet").textContent = CC.greeting() + ", " + user.name.split(" ")[0];
   if (user.role !== "staff") {
     const box = el("div", "empty card");
     box.appendChild(el("h3", "", "This page is for municipal staff"));

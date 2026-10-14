@@ -185,6 +185,7 @@ def init_db():
                 conn.execute(statement)
         for name, kind in EXTRA_COMPLAINT_COLUMNS.items():
             conn.execute(f"ALTER TABLE complaints ADD COLUMN IF NOT EXISTS {name} {POSTGRES_TYPES[kind]}")
+        conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT")
     else:
         conn.executescript(SQLITE_SCHEMA + EXTRA_TABLES_SQLITE)
         existing = {row[1] for row in conn.execute("PRAGMA table_info(complaints)")}
@@ -194,6 +195,12 @@ def init_db():
                     conn.execute(f"ALTER TABLE complaints ADD COLUMN {name} {kind}")
                 except sqlite3.OperationalError:
                     pass
+        user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "display_name" not in user_columns:
+            try:
+                conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+            except sqlite3.OperationalError:
+                pass
     conn.commit()
     conn.close()
 

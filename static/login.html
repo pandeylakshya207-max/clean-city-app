@@ -1,99 +1,139 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1f7a4d">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c8f169">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/ui.css">
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
-<title>Clean City - Login</title>
+<title>Clean City - Log in</title>
 <style>
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  body {
-    margin: 0; min-height: 100vh; padding: 16px;
-    display: flex; align-items: center; justify-content: center;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: #eef3ef; color: #17231c;
+  body { background: var(--mist); }
+  .wrap { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+  .intro {
+    position: relative; background: var(--lime); border-radius: 0 0 36px 36px;
+    padding: calc(18px + env(safe-area-inset-top)) 22px 64px; overflow: hidden;
   }
-  .card {
-    width: 100%; max-width: 400px; background: #fff; border-radius: 16px;
-    padding: 28px 24px; box-shadow: 0 4px 24px rgba(23, 35, 28, 0.08);
+  .intro .brand { margin-bottom: 8px; }
+  .art { display: block; width: 100%; max-width: 340px; height: auto; margin: 6px auto 4px; }
+  .intro h1 { font-size: 40px; line-height: 1.02; font-weight: 800; letter-spacing: -0.035em; max-width: 12ch; }
+  .intro p { margin-top: 10px; color: var(--ink-2); font-size: 15.5px; max-width: 34ch; }
+  .panel {
+    position: relative; margin: -40px 16px 24px; background: var(--paper); border-radius: var(--r-xl);
+    padding: 24px 20px 20px; box-shadow: 0 18px 40px rgba(23, 33, 27, 0.10);
   }
-  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-  .logo {
-    width: 40px; height: 40px; border-radius: 10px; background: #1f7a4d; color: #fff;
-    display: flex; align-items: center; justify-content: center; font-weight: 700;
+  .panel h2 { font-size: 22px; }
+  .panel .lead { color: var(--stone); margin-top: 4px; font-size: 14.5px; }
+  .with-icon { position: relative; }
+  .with-icon svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; color: var(--stone); }
+  .with-icon .input { padding-left: 48px; }
+  .otp { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 18px; }
+  .otp input {
+    width: 100%; aspect-ratio: 1 / 1.15; border-radius: var(--r-md); border: 1.5px solid var(--line); background: var(--mist);
+    text-align: center; font-family: var(--head); font-size: 26px; font-weight: 700; outline: none; padding: 0;
   }
-  .brand-name { font-size: 18px; font-weight: 700; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
-  p { margin: 0 0 18px; color: #55645b; font-size: 15px; line-height: 1.45; }
-  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  input {
-    width: 100%; padding: 13px 14px; font-size: 16px; border: 1.5px solid #cfd8d2;
-    border-radius: 10px; outline: none; background: #fff; color: inherit;
-  }
-  input:focus { border-color: #1f7a4d; box-shadow: 0 0 0 3px rgba(31, 122, 77, 0.15); }
-  #code { letter-spacing: 8px; text-align: center; font-size: 22px; font-weight: 600; }
-  button {
-    width: 100%; margin-top: 14px; padding: 13px; font-size: 16px; font-weight: 600;
-    border: 0; border-radius: 10px; background: #1f7a4d; color: #fff; cursor: pointer;
-  }
-  button:disabled { opacity: 0.6; cursor: default; }
-  button.link { background: none; color: #1f7a4d; padding: 8px; margin-top: 8px; }
-  .msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: #b3261e; }
-  .msg.ok { color: #1f7a4d; }
-  .hint {
-    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
-    background: #fff7e0; color: #6b5200; font-size: 13px;
-  }
+  .otp input:focus { border-color: var(--ink); background: var(--paper); box-shadow: 0 0 0 4px rgba(200, 241, 105, 0.6); }
+  .otp input.filled { background: var(--paper); border-color: var(--ink); }
+  .row-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  .row-links button { background: none; border: 0; padding: 6px 0; font-weight: 600; color: var(--leaf); font-size: 14px; }
+  .row-links button:disabled { color: var(--stone-2); cursor: default; }
+  .hint { margin-top: 14px; padding: 10px 14px; border-radius: var(--r-md); background: var(--amber-bg); color: var(--amber); font-size: 13px; }
+  .sent { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--mist); font-weight: 600; font-size: 14px; max-width: 100%; }
+  .sent span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sent .ic { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--lime); display: grid; place-items: center; flex: none; }
+  .sent .ic svg { width: 14px; height: 14px; }
+  .foot { text-align: center; color: var(--stone); font-size: 12.5px; margin: auto 24px 24px; }
+  .panel .btn { margin-top: 18px; }
 </style>
 </head>
 <body>
-<main class="card">
-  <div class="brand">
-    <div class="logo">CC</div>
-    <div class="brand-name">Clean City</div>
-  </div>
+<div class="wrap">
+  <header class="intro">
+    <div class="brand"><span data-mark></span>Clean City</div>
+    <svg class="art" viewBox="0 0 340 190" role="img" aria-label="A phone scanning a pile of garbage on a street">
+      <path d="M0 160h340" stroke="#17211b" stroke-width="2.5" stroke-linecap="round"/>
+      <g fill="none" stroke="#17211b" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M14 160V96h34v64M48 160V70h40v90M250 160V84h36v76M286 160v-52h40v52" fill="#d9f59a"/>
+        <path d="M24 108h6M36 108h6M24 124h6M36 124h6M58 84h8M72 84h8M58 100h8M72 100h8M58 116h8M72 116h8M260 98h6M272 98h6M260 114h6M272 114h6M296 122h8M312 122h8"/>
+      </g>
+      <g stroke="#17211b" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M118 160c4-20 22-30 40-26 6-14 28-18 38-4 14-4 28 6 30 30z" fill="#ffffff"/>
+        <path d="M140 146l10-8 6 10M182 140l6 8M200 150l8-6" fill="none" stroke-linecap="round"/>
+        <circle cx="168" cy="150" r="5" fill="#c8f169"/>
+      </g>
+      <g transform="rotate(-8 218 72)">
+        <rect x="186" y="8" width="70" height="128" rx="14" fill="#17211b"/>
+        <rect x="192" y="20" width="58" height="104" rx="8" fill="#26332b"/>
+        <path d="M200 44v-8a4 4 0 0 1 4-4h8M230 32h8a4 4 0 0 1 4 4v8M242 100v8a4 4 0 0 1-4 4h-8M212 112h-8a4 4 0 0 1-4-4v-8" stroke="#c8f169" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path d="M210 82c2-8 9-12 16-10 3-5 11-6 14 0" stroke="#c8f169" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <rect x="212" y="12" width="18" height="4" rx="2" fill="#26332b"/>
+      </g>
+      <path d="M200 120 176 138" stroke="#17211b" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round"/>
+      <g fill="#17211b"><path d="M104 40l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/><path d="M300 30l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>
+    </svg>
+    <h1>One photo cleans a street</h1>
+    <p>Report garbage near you. The municipal team cleans it and sends you the proof.</p>
+  </header>
 
-  <form id="step-contact">
-    <h1>Log in</h1>
-    <p>Report garbage in your area and track the clean-up.</p>
-    <label for="contact">Email or mobile number</label>
-    <input id="contact" type="text" autocomplete="username" placeholder="you@example.com or 9876543210" required>
-    <button id="send-btn" type="submit">Send code</button>
-    <div id="msg-contact" class="msg" role="alert"></div>
-  </form>
+  <main class="panel">
+    <form id="step-contact" novalidate>
+      <h2>Log in or sign up</h2>
+      <p class="lead">We will send a 6-digit code. No password needed.</p>
+      <label class="field">
+        <span>Email or mobile number</span>
+        <div class="with-icon" data-icon="mail">
+          <input id="contact" class="input" type="text" autocomplete="username" inputmode="email" placeholder="you@example.com" required>
+        </div>
+      </label>
+      <button id="send-btn" class="btn with-go" type="submit">Send code<span class="go" data-icon="arrow"></span></button>
+      <div id="msg-contact" class="msg" role="alert"></div>
+    </form>
 
-  <form id="step-otp" hidden>
-    <h1>Enter your code</h1>
-    <p>We sent a 6-digit code to <strong id="sent-to"></strong>. It is valid for 5 minutes.</p>
-    <label for="code">6-digit code</label>
-    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
-    <div id="dev-hint" class="hint" hidden>Test mode: the code is printed in the terminal where the server is running.</div>
-    <button id="verify-btn" type="submit">Verify and log in</button>
-    <button id="resend-btn" type="button" class="link">Resend code</button>
-    <button id="change-btn" type="button" class="link">Use a different email or number</button>
-    <div id="msg-otp" class="msg" role="alert"></div>
-  </form>
+    <form id="step-otp" hidden novalidate>
+      <h2>Enter your code</h2>
+      <p class="lead">Sent to the address below. It works for 5 minutes.</p>
+      <div class="sent"><span class="ic" data-icon="mail"></span><span id="sent-to"></span></div>
+      <div class="otp" id="otp" role="group" aria-label="6-digit code">
+        <input inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Digit 1">
+        <input inputmode="numeric" maxlength="1" aria-label="Digit 2">
+        <input inputmode="numeric" maxlength="1" aria-label="Digit 3">
+        <input inputmode="numeric" maxlength="1" aria-label="Digit 4">
+        <input inputmode="numeric" maxlength="1" aria-label="Digit 5">
+        <input inputmode="numeric" maxlength="1" aria-label="Digit 6">
+      </div>
+      <div id="dev-hint" class="hint" hidden>Test mode: the code is printed in the terminal where the server is running.</div>
+      <button id="verify-btn" class="btn with-go" type="submit">Verify and continue<span class="go" data-icon="check"></span></button>
+      <div class="row-links">
+        <button id="change-btn" type="button">Change email or number</button>
+        <button id="resend-btn" type="button">Resend code</button>
+      </div>
+      <div id="msg-otp" class="msg" role="alert"></div>
+    </form>
 
-  <section id="step-done" hidden>
-    <h1>You are logged in</h1>
-    <p>Signed in as <strong id="who"></strong>.</p>
-    <button id="logout-btn" type="button">Log out</button>
-  </section>
-</main>
+    <section id="step-done" hidden>
+      <h2>You are logged in</h2>
+      <p class="lead">Signed in as <strong id="who"></strong>. Opening the app...</p>
+      <button id="logout-btn" class="btn ghost" type="button">Log out</button>
+    </section>
+  </main>
+  <p class="foot">Codes may land in your spam folder the first time.</p>
+</div>
 
+<script src="/static/ui.js"></script>
 <script>
-const $ = (id) => document.getElementById(id);
+const $ = CC.$;
+CC.fillIcons();
 let contact = "";
 let cooldownTimer = null;
+const boxes = Array.from(document.querySelectorAll("#otp input"));
 
 function show(step) {
-  for (const id of ["step-contact", "step-otp", "step-done"]) {
-    $(id).hidden = id !== step;
-  }
+  for (const id of ["step-contact", "step-otp", "step-done"]) $(id).hidden = id !== step;
 }
 
 function setMsg(id, text, ok) {
@@ -108,11 +148,51 @@ async function post(path, body) {
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
-  }
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
   return data;
 }
+
+function code() {
+  return boxes.map((b) => b.value).join("");
+}
+
+function setCode(digits) {
+  boxes.forEach((b, i) => {
+    b.value = digits[i] || "";
+    b.classList.toggle("filled", !!b.value);
+  });
+}
+
+boxes.forEach((box, i) => {
+  box.addEventListener("input", () => {
+    const digits = box.value.replace(/\D/g, "");
+    if (digits.length > 1) {
+      setCode((code().slice(0, i) + digits).slice(0, 6).split(""));
+    } else {
+      box.value = digits;
+      box.classList.toggle("filled", !!digits);
+    }
+    const next = boxes.find((b) => !b.value);
+    if (digits && next) next.focus();
+    if (code().length === 6) $("step-otp").requestSubmit();
+  });
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "Backspace" && !box.value && i > 0) {
+      boxes[i - 1].value = "";
+      boxes[i - 1].classList.remove("filled");
+      boxes[i - 1].focus();
+      e.preventDefault();
+    }
+  });
+  box.addEventListener("paste", (e) => {
+    const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
+    if (!digits) return;
+    e.preventDefault();
+    setCode(digits.split(""));
+    (boxes.find((b) => !b.value) || boxes.at(-1)).focus();
+    if (digits.length === 6) $("step-otp").requestSubmit();
+  });
+});
 
 function startCooldown() {
   let left = 30;
@@ -126,7 +206,7 @@ function startCooldown() {
       btn.textContent = "Resend code";
       return;
     }
-    btn.textContent = "Resend code in " + left + "s";
+    btn.textContent = "Resend in " + left + "s";
     left -= 1;
   };
   tick();
@@ -138,21 +218,26 @@ async function sendCode() {
   contact = data.contact;
   $("sent-to").textContent = data.contact;
   $("dev-hint").hidden = data.delivery !== "dev";
-  $("code").value = "";
+  setCode([]);
   show("step-otp");
-  $("code").focus();
+  boxes[0].focus();
   startCooldown();
 }
 
 function showLoggedIn(user) {
   $("who").textContent = user.contact;
+  show("step-done");
   window.location.href = user.role === "staff" ? "/dashboard" : "/report";
 }
 
 $("step-contact").addEventListener("submit", async (e) => {
   e.preventDefault();
-  contact = $("contact").value;
+  contact = $("contact").value.trim();
   setMsg("msg-contact", "");
+  if (!contact) {
+    setMsg("msg-contact", "Enter your email address or 10-digit mobile number.");
+    return;
+  }
   $("send-btn").disabled = true;
   try {
     await sendCode();
@@ -180,17 +265,27 @@ $("change-btn").addEventListener("click", () => {
   $("contact").focus();
 });
 
+let verifying = false;
 $("step-otp").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (verifying) return;
   setMsg("msg-otp", "");
+  if (code().length !== 6) {
+    setMsg("msg-otp", "Enter all 6 digits of the code.");
+    return;
+  }
+  verifying = true;
   $("verify-btn").disabled = true;
   try {
-    const data = await post("/api/auth/verify-otp", { contact, code: $("code").value });
+    const data = await post("/api/auth/verify-otp", { contact, code: code() });
     localStorage.setItem("cc_token", data.token);
     showLoggedIn(data.user);
   } catch (err) {
     setMsg("msg-otp", err.message);
+    setCode([]);
+    boxes[0].focus();
   } finally {
+    verifying = false;
     $("verify-btn").disabled = false;
   }
 });
@@ -202,7 +297,8 @@ $("logout-btn").addEventListener("click", () => {
 });
 
 (async () => {
-  const token = localStorage.getItem("cc_token");
+  let token = null;
+  try { token = localStorage.getItem("cc_token"); } catch (e) {}
   if (!token) return;
   const res = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
   if (res.ok) showLoggedIn(await res.json());
@@ -211,5 +307,3 @@ $("logout-btn").addEventListener("click", () => {
 </script>
 </body>
 </html>
-
-

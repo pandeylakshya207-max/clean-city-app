@@ -1,171 +1,128 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1f7a4d">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef2ea">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="/static/ui.css">
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
 <title>Clean City - Garbage hotspots</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  body {
-    margin: 0; background: #eef3ef; color: #17231c;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  }
-  header {
-    background: #14532d; color: #fff; padding: 12px 16px;
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
-  header .name { font-weight: 700; font-size: 17px; }
-  header .who { font-size: 12px; opacity: 0.85; overflow-wrap: anywhere; }
-  .nav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .nav a, .nav button {
-    padding: 8px 12px; font-size: 14px; font-weight: 600; border: 0; border-radius: 8px;
-    background: rgba(255, 255, 255, 0.18); color: #fff; cursor: pointer; text-decoration: none;
-    font-family: inherit;
-  }
-  main { max-width: 900px; margin: 0 auto; padding: 16px; }
-  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .bar label { font-size: 14px; font-weight: 600; }
-  .bar select {
-    padding: 8px 10px; font-size: 14px; border: 1.5px solid #cfd8d2; border-radius: 8px;
-    background: #fff; color: inherit; font-family: inherit;
-  }
-  .summary { font-size: 14px; color: #55645b; }
-  .card {
-    background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px;
-    box-shadow: 0 2px 12px rgba(23, 35, 28, 0.07);
-  }
-  #map { height: 420px; border-radius: 10px; background: #e3ebe5; display: flex; align-items: center; justify-content: center; color: #55645b; font-size: 14px; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .head h1 { font-size: 26px; }
+  .head .who { font-size: 12.5px; color: var(--stone); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .map-card { padding: 8px; margin-top: 12px; }
+  #map { height: 420px; border-radius: 16px; background: var(--mist); display: flex; align-items: center; justify-content: center; color: var(--stone); font-size: 14px; z-index: 0; }
   @media (max-width: 640px) { #map { height: 320px; } }
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 13px; color: #55645b; }
-  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
-  h2 { font-size: 17px; margin: 18px 0 10px; }
-  .spot-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .rank {
-    width: 30px; height: 30px; border-radius: 50%; background: #14532d; color: #fff;
-    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none;
-  }
-  .spot-name { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
-  .line { font-size: 14px; color: #33413a; margin-top: 7px; line-height: 1.45; }
-  .line.warn { color: #8c1d18; font-weight: 600; }
-  .line.tip { color: #14532d; }
-  .meta { font-size: 12px; color: #6b7a71; margin-top: 8px; overflow-wrap: anywhere; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-  .actions button, .actions a {
-    padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer;
-    border: 1.5px solid #1f7a4d; background: #fff; color: #1f7a4d; text-decoration: none; font-family: inherit;
-  }
-  .empty { color: #55645b; padding: 18px 0; text-align: center; font-size: 14px; }
-  .how { font-size: 13px; color: #55645b; line-height: 1.5; }
-  .how ul { margin: 6px 0 0; padding-left: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 12px 8px 4px; font-size: 13px; color: var(--stone); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .heatbar { width: 54px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #facc15, #f97316, #b91c1c); }
+  .spot { padding: 18px; }
+  .spot-head { display: flex; align-items: center; gap: 12px; }
+  .rank { width: 44px; height: 44px; border-radius: 14px; background: var(--ink); color: #fff; font-family: var(--head); font-weight: 800; font-size: 20px; display: grid; place-items: center; flex: none; }
+  .spot:first-child .rank { background: var(--lime); color: var(--ink); }
+  .spot-name { font-family: var(--head); font-weight: 700; font-size: 18px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .lvl { display: inline-flex; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; margin-top: 3px; }
+  .lvl.high { background: var(--red-bg); color: var(--red); }
+  .lvl.medium { background: #ffeedd; color: #b4530a; }
+  .lvl.low { background: var(--amber-bg); color: var(--amber); }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  .metric { background: var(--mist); border-radius: 14px; padding: 10px 12px; min-width: 0; }
+  .metric b { display: block; font-family: var(--head); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .metric span { font-size: 12px; color: var(--stone); }
+  .line { font-size: 14px; margin-top: 10px; color: var(--ink-2); }
+  .line.warn { color: var(--red); font-weight: 700; }
+  .tip { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--lime-soft); font-size: 14px; color: var(--ink-2); }
+  .tip svg { width: 18px; height: 18px; flex: none; color: var(--leaf); margin-top: 1px; }
+  .spot .meta { font-size: 12px; color: var(--stone); margin-top: 10px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .how ul { margin: 8px 0 0; padding-left: 18px; color: var(--stone); font-size: 13.5px; }
+  .how li + li { margin-top: 4px; }
   .popup-name { font-weight: 700; margin-bottom: 4px; }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <div class="name">Clean City - Garbage hotspots</div>
-    <div class="who" id="who"></div>
+<div class="app wide">
+  <div class="head">
+    <a class="icon-btn" href="/dashboard" aria-label="Back to dashboard" data-icon="back"></a>
+    <div>
+      <h1>Garbage hotspots</h1>
+      <div class="who" id="who"></div>
+    </div>
   </div>
-  <div class="nav">
-    <a href="/dashboard">Dashboard</a>
-    <button id="logout-btn" type="button">Log out</button>
-  </div>
-</header>
 
-<main>
   <div class="bar">
-    <label for="period">Period</label>
-    <select id="period">
-      <option value="30">Last 30 days</option>
-      <option value="90" selected>Last 90 days</option>
-      <option value="365">Last 12 months</option>
-    </select>
-    <span class="summary" id="summary">Finding hotspots...</span>
+    <div class="seg" id="period" role="group" aria-label="Period">
+      <button type="button" data-d="30">30 days</button>
+      <button type="button" data-d="90" class="on">90 days</button>
+      <button type="button" data-d="365">12 months</button>
+    </div>
   </div>
 
-  <section class="card">
+  <div class="stats" aria-label="Summary">
+    <div class="stat"><span class="num" id="s-reports">0</span><span class="lbl">Reports</span></div>
+    <div class="stat dark"><span class="num" id="s-spots">0</span><span class="lbl">Hotspots</span></div>
+    <div class="stat lime"><span class="num" id="s-high">0</span><span class="lbl">High priority</span></div>
+  </div>
+
+  <section class="card map-card">
     <div id="map">Loading map...</div>
     <div class="legend">
-      <span><span class="dot" style="background:#b3261e"></span>High: keeps coming back</span>
+      <span><span class="dot" style="background:#c8392c"></span>High: keeps coming back</span>
       <span><span class="dot" style="background:#d97706"></span>Medium</span>
       <span><span class="dot" style="background:#ca8a04"></span>Low</span>
-      <span>Brighter colour on the heat map = more recent and repeated reports</span>
+      <span><span class="heatbar"></span>More recent and repeated reports glow red</span>
     </div>
   </section>
 
-  <h2>Hotspots, worst first</h2>
-  <div id="list"><div class="empty">Loading...</div></div>
+  <div class="section-head"><h2>Worst first</h2><span class="small muted" id="summary"></span></div>
+  <div id="list" class="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"><div class="skeleton"></div></div>
 
-  <section class="card how">
-    <strong>How hotspots are found</strong>
+  <section class="card how" style="margin-top:16px">
+    <h3>How hotspots are found</h3>
     <ul>
       <li>Reports within 200 metres of each other are grouped. A place needs at least 3 reports to become a hotspot.</li>
       <li>Recent reports count more: a report loses half its weight every 30 days.</li>
-      <li>A report that comes in after the spot was already cleaned counts double, because it shows people are dumping there again and again.</li>
+      <li>A report that comes in after the spot was already cleaned counts double, because people are dumping there again and again.</li>
       <li>The expected next dumping date is the last cleaning plus the average time garbage took to come back. It is an estimate.</li>
     </ul>
   </section>
-</main>
+</div>
+
+<nav class="nav" aria-label="Main">
+  <a href="/dashboard" aria-label="Dashboard" data-icon="list"></a>
+  <a href="/hotspots" class="main" aria-label="Hotspot map" data-icon="map"></a>
+  <button type="button" id="logout-btn" aria-label="Log out" data-icon="logout"></button>
+</nav>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="/static/ui.js"></script>
 <script>
-const $ = (id) => document.getElementById(id);
-const token = localStorage.getItem("cc_token");
+const $ = CC.$;
+const el = CC.el;
+CC.fillIcons();
 const LEVELS = {
-  high: { label: "High", color: "#b3261e" },
+  high: { label: "High", color: "#c8392c" },
   medium: { label: "Medium", color: "#d97706" },
   low: { label: "Low", color: "#ca8a04" },
 };
+let days = "90";
 let map = null;
 let heatLayer = null;
 let circleLayer = null;
 let circles = {};
 
-function logout() {
-  localStorage.removeItem("cc_token");
-  window.location.href = "/";
-}
-
-async function api(path) {
-  const res = await fetch(path, { headers: { Authorization: "Bearer " + token } });
-  if (res.status === 401) {
-    logout();
-    throw new Error("Please log in again.");
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.");
-  }
-  return data;
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text) node.textContent = text;
-  return node;
-}
-
-function shortDate(iso) {
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
-function plural(n, one, many) {
-  return n + " " + (n === 1 ? one : many);
-}
-
-function comesBack(daysValue) {
-  if (daysValue < 1) return "within a day";
-  const d = Math.round(daysValue);
-  return plural(d, "day", "days") + " later";
+function comesBack(d) {
+  return d < 1 ? "under 1 day" : CC.plural(Math.round(d), "day", "days");
 }
 
 function initMap() {
@@ -175,50 +132,16 @@ function initMap() {
   }
   $("map").textContent = "";
   map = L.map("map").setView([12.9716, 77.5946], 11);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors",
-  }).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
   circleLayer = L.layerGroup().addTo(map);
   return true;
-}
-
-function describe(h) {
-  const lines = [];
-  lines.push({
-    text: plural(h.reports, "report", "reports") + " in this period (" + h.recent_reports +
-      " in the last 30 days), from " + plural(h.people, "person", "different people") + ".",
-  });
-  if (h.open_reports) {
-    lines.push({ text: plural(h.open_reports, "report is", "reports are") + " still waiting to be cleaned." });
-  }
-  if (h.repeats) {
-    lines.push({
-      text: "Garbage came back " + plural(h.repeats, "time", "times") + " after cleaning" +
-        (h.avg_return_days !== null ? ", on average " + comesBack(h.avg_return_days) : "") + ".",
-    });
-  }
-  if (h.next_expected) {
-    if (new Date(h.next_expected) <= new Date()) {
-      lines.push({ text: "Due again: garbage usually returns by now. Check this spot.", cls: "warn" });
-    } else {
-      lines.push({ text: "Expected to be dumped again around " + shortDate(h.next_expected) + " (estimate)." });
-    }
-  }
-  const tips = {
-    high: "Suggested action: put up a dustbin and a no-dumping sign, and consider a camera or fines here.",
-    medium: "Suggested action: add this spot to the regular cleaning round.",
-    low: "Suggested action: keep an eye on it.",
-  };
-  lines.push({ text: tips[h.level], cls: "tip" });
-  return lines;
 }
 
 function popupContent(h) {
   const box = el("div");
   box.appendChild(el("div", "popup-name", "#" + h.rank + " " + h.name));
-  box.appendChild(el("div", "", LEVELS[h.level].label + " | " + plural(h.reports, "report", "reports") +
-    (h.repeats ? " | came back " + plural(h.repeats, "time", "times") : "")));
+  box.appendChild(el("div", "", LEVELS[h.level].label + ", " + CC.plural(h.reports, "report", "reports") +
+    (h.repeats ? ", came back " + CC.plural(h.repeats, "time", "times") : "")));
   return box;
 }
 
@@ -242,9 +165,7 @@ function renderMap(data) {
     circle.addTo(circleLayer);
     circles[h.rank] = circle;
   }
-  if (data.heat.length) {
-    map.fitBounds(L.latLngBounds(data.heat.map((p) => [p[0], p[1]])), { padding: [30, 30], maxZoom: 15 });
-  }
+  if (data.heat.length) map.fitBounds(L.latLngBounds(data.heat.map((p) => [p[0], p[1]])), { padding: [30, 30], maxZoom: 15 });
   map.invalidateSize();
 }
 
@@ -255,78 +176,112 @@ function showOnMap(h) {
   $("map").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+function metric(value, label) {
+  const m = el("div", "metric");
+  m.appendChild(el("b", "", value));
+  m.appendChild(el("span", "", label));
+  return m;
+}
+
 function renderCard(h) {
-  const card = el("div", "card");
+  const card = el("article", "card spot");
   const head = el("div", "spot-head");
   head.appendChild(el("div", "rank", String(h.rank)));
-  head.appendChild(el("div", "spot-name", h.name));
-  const badge = el("span", "badge", LEVELS[h.level].label);
-  badge.style.background = LEVELS[h.level].color;
-  head.appendChild(badge);
+  const t = el("div");
+  t.appendChild(el("div", "spot-name", h.name));
+  t.appendChild(el("span", "lvl " + h.level, LEVELS[h.level].label + " priority"));
+  head.appendChild(t);
   card.appendChild(head);
 
-  for (const line of describe(h)) {
-    card.appendChild(el("div", "line" + (line.cls ? " " + line.cls : ""), line.text));
+  const metrics = el("div", "metrics");
+  metrics.appendChild(metric(String(h.reports), "reports, " + h.recent_reports + " this month"));
+  metrics.appendChild(metric(String(h.repeats), "came back after cleaning"));
+  metrics.appendChild(metric(h.avg_return_days !== null ? comesBack(h.avg_return_days) : "-", "until it returns"));
+  card.appendChild(metrics);
+
+  card.appendChild(el("div", "line", "Reported by " + CC.plural(h.people, "person", "different people") +
+    (h.open_reports ? ". " + CC.plural(h.open_reports, "report is", "reports are") + " still waiting to be cleaned." : ".")));
+  if (h.next_expected) {
+    if (new Date(h.next_expected) <= new Date()) card.appendChild(el("div", "line warn", "Due again: garbage usually returns by now. Check this spot."));
+    else card.appendChild(el("div", "line", "Likely dumped again around " + CC.shortDate(h.next_expected) + " (estimate)."));
   }
-  card.appendChild(el("div", "meta",
-    "Score " + h.score + " | first report " + shortDate(h.first_report) + ", latest " + shortDate(h.last_report) +
-    " | report numbers: " + h.report_ids.map((id) => "#" + id).join(", ")));
+  const tips = {
+    high: "Put up a dustbin and a no-dumping sign, and consider a camera or fines here.",
+    medium: "Add this spot to the regular cleaning round.",
+    low: "Keep an eye on it.",
+  };
+  const tip = el("div", "tip");
+  tip.innerHTML = CC.icon("spark");
+  tip.appendChild(el("span", "", tips[h.level]));
+  card.appendChild(tip);
+  card.appendChild(el("div", "meta", "First report " + CC.shortDate(h.first_report) + ", latest " + CC.shortDate(h.last_report) +
+    ". Report numbers: " + h.report_ids.map((id) => "#" + id).join(", ")));
 
   const actions = el("div", "actions");
-  const show = el("button", "", "Show on map");
+  const show = el("button", "btn sm", "Show on map");
   show.type = "button";
   show.addEventListener("click", () => showOnMap(h));
   actions.appendChild(show);
-  const gmaps = el("a", "", "Open in Google Maps");
-  gmaps.href = "https://www.google.com/maps?q=" + h.latitude + "," + h.longitude;
-  gmaps.target = "_blank";
-  gmaps.rel = "noopener";
-  actions.appendChild(gmaps);
+  const g = el("a", "btn sm ghost", "Open in Google Maps");
+  g.href = "https://www.google.com/maps?q=" + h.latitude + "," + h.longitude;
+  g.target = "_blank";
+  g.rel = "noopener";
+  actions.appendChild(g);
   card.appendChild(actions);
   return card;
 }
 
 async function load() {
-  const days = $("period").value;
+  document.querySelectorAll("#period button").forEach((b) => b.classList.toggle("on", b.dataset.d === days));
   $("summary").textContent = "Finding hotspots...";
   const list = $("list");
   try {
-    const data = await api("/api/staff/hotspots?days=" + days);
-    const n = data.hotspots.length;
-    $("summary").textContent = plural(data.total_reports, "report", "reports") + " in this period, " +
-      plural(n, "hotspot", "hotspots") + " found.";
+    const data = await CC.api("/api/staff/hotspots?days=" + days);
+    $("s-reports").textContent = data.total_reports;
+    $("s-spots").textContent = data.hotspots.length;
+    $("s-high").textContent = data.hotspots.filter((h) => h.level === "high").length;
+    $("summary").textContent = data.hotspots.length ? "Ranked by score" : "";
     renderMap(data);
     list.replaceChildren();
-    if (!n) {
-      list.appendChild(el("div", "empty",
-        "No hotspots in this period. A hotspot needs at least 3 reports within 200 metres of each other."));
+    if (!data.hotspots.length) {
+      const empty = el("div", "empty card");
+      const big = el("div", "big");
+      big.innerHTML = CC.icon("map");
+      empty.appendChild(big);
+      empty.appendChild(el("h3", "", "No hotspots in this period"));
+      empty.appendChild(el("p", "small", "A hotspot needs at least 3 reports within 200 metres of each other."));
+      list.appendChild(empty);
       return;
     }
     for (const h of data.hotspots) list.appendChild(renderCard(h));
   } catch (err) {
     $("summary").textContent = "";
-    list.replaceChildren(el("div", "empty", err.message));
+    list.replaceChildren(el("div", "empty card", err.message));
   }
 }
 
-$("logout-btn").addEventListener("click", logout);
-$("period").addEventListener("change", load);
+$("logout-btn").addEventListener("click", CC.logout);
+$("period").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  days = b.dataset.d;
+  load();
+});
 
 (async () => {
-  if (!token) {
-    logout();
+  if (!CC.token()) {
+    CC.logout();
     return;
   }
   let user;
   try {
-    user = await api("/api/me");
+    user = await CC.api("/api/me");
   } catch (err) {
     return;
   }
   $("who").textContent = user.contact;
   if (user.role !== "staff") {
-    $("summary").textContent = "";
-    $("list").replaceChildren(el("div", "empty", "This page is only for municipal staff."));
+    $("list").replaceChildren(el("div", "empty card", "This page is only for municipal staff."));
     $("map").textContent = "";
     return;
   }
